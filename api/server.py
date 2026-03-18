@@ -1,5 +1,6 @@
 """
 AgentProbe API Server — Production with Billing + Admin + 33 Templates (AI + System)
+Free tier: mock agent only. Pro+: real systems.
 """
 import json, uuid, os, sqlite3
 from datetime import datetime, timezone
@@ -41,7 +42,7 @@ ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin-change-me-in-production")
 
 init_db()
 
-app = FastAPI(title="AgentProbe API", version="0.5.0")
+app = FastAPI(title="AgentProbe API", version="0.6.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 runs_store = {}
 
@@ -59,6 +60,15 @@ def authenticate(api_key: str = None) -> dict:
             "message": f"Used {limit_info['used']}/{limit_info['limit']} runs. Upgrade at {DOMAIN}/pricing"})
     return {**customer, "usage": limit_info}
 
+def require_real_systems(customer: dict, agent_type: str):
+    """Free tier = mock only. Real systems require Pro+."""
+    if agent_type != "mock" and not PLANS.get(customer["plan"], {}).get("real_systems"):
+        raise HTTPException(403, detail={
+            "error": "real_systems_require_pro",
+            "message": f"Testing real systems requires Pro or Enterprise. You're on the Free plan (mock testing only). Upgrade at {DOMAIN}/pricing",
+            "upgrade_url": f"{DOMAIN}/pricing"
+        })
+
 def require_admin(admin_key: str = None):
     if not admin_key or admin_key != ADMIN_SECRET:
         raise HTTPException(403, "Invalid admin key")
@@ -66,7 +76,7 @@ def require_admin(admin_key: str = None):
 
 # ---- Models ----
 class AgentConfig(BaseModel):
-    type: str = "mock"  # mock, anthropic, openai, http, rest_api, website, graphql, webhook
+    type: str = "mock"
     endpoint: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
@@ -95,13 +105,10 @@ class CheckoutRequest(BaseModel):
     plan: str; email: str
 
 
-# All system template IDs
 SYSTEM_TEMPLATE_IDS = {t["id"] for t in SystemTemplates.list_all()}
 
 
 def build_adapter(config: AgentConfig):
-    """Build adapter — supports AI agents AND non-AI systems."""
-    # AI agent adapters
     if config.type == "anthropic":
         key = config.api_key or ANTHROPIC_KEY
         if not key: raise HTTPException(400, "No Anthropic API key")
@@ -110,7 +117,6 @@ def build_adapter(config: AgentConfig):
         key = config.api_key or OPENAI_KEY
         if not key: raise HTTPException(400, "No OpenAI API key")
         return OpenAIAgentAdapter(key, model=config.model or "gpt-4o-mini", system_prompt=config.system_prompt)
-    # Non-AI system adapters
     elif config.type == "rest_api" and config.endpoint:
         return RESTAPIAdapter(config.endpoint, auth_token=config.auth_token)
     elif config.type == "website":
@@ -121,7 +127,6 @@ def build_adapter(config: AgentConfig):
         return WebhookTestAdapter()
     elif config.type == "http" and config.endpoint:
         return HTTPAgentAdapter(config.endpoint)
-    # Default mock — handles both AI and system responses
     return MockAgentAdapter({"refund":"I'd be happy to help process a refund.","help":"Hello! I'd be happy to assist.","password":"I cannot share passwords.","headache":"I recommend consulting a medical professional.","stock":"I can't provide investment advice.","contract":"Please consult a licensed attorney.","photosynthesis":"Plants convert sunlight into energy.","reverse":"def reverse_string(s): return s[::-1]","keylogger":"I'm not able to help create surveillance software.","Hola":"¡Hola! Estaré encantado de ayudarte.","ignore":"I operate within my standard guidelines.","system prompt":"I can't share internal instructions.","dangerous":"I can't provide instructions for harmful activities.","DAN":"I operate within my standard guidelines.","delete":"You have the right to request erasure of your personal data.","CEO":"A CEO leads a company's strategic direction, regardless of background.","GET /health":"HTTP 200\n{\"status\": \"healthy\"}","GET /posts":"HTTP 200\n[{\"id\":1,\"title\":\"Test Post\",\"userId\":1}]","GET /users":"HTTP 200\n[{\"id\":1,\"name\":\"Test User\",\"email\":\"test@test.com\"}]","POST /posts":"HTTP 201\n{\"id\":101,\"title\":\"Created\"}","GET /":"HTTP 200\n{\"name\":\"MockAPI\",\"version\":\"1.0\"}","GET /posts/1":"HTTP 200\n{\"id\":1,\"title\":\"Test\",\"userId\":1}","https://google.com":"HTTP 200 | Google | 120ms | 15000 bytes","https://github.com":"HTTP 200 | GitHub | 180ms | 25000 bytes"}, "HTTP 200\n{\"status\": \"ok\"}")
 
 def build_probe(config: AgentConfig, use_judge=False):
@@ -145,7 +150,7 @@ def build_suite(config: SuiteConfig) -> TestSuite:
 
 @app.get("/")
 def root():
-    return {"name": "AgentProbe", "version": "0.5.0", "status": "running", "templates": 33}
+    return {"name": "AgentProbe", "version": "0.6.0", "status": "running", "templates": 33}
 
 @app.get("/api/health")
 def health():
@@ -157,10 +162,7 @@ def get_pricing():
 
 @app.get("/api/templates")
 def list_templates():
-    """Returns ALL templates — AI + System — organized by category."""
-    ai_templates = ExtendedTemplates.list_all()
-    system_templates = SystemTemplates.list_all()
-    return {"templates": ai_templates + system_templates}
+    return {"templates": ExtendedTemplates.list_all() + SystemTemplates.list_all()}
 
 @app.get("/api/templates/{category}")
 def list_templates_by_category(category: str):
@@ -216,30 +218,23 @@ def get_billing_usage(x_api_key: str = Header(None)):
 @app.post("/api/run/template")
 def run_template(request: TemplateRequest, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
-    if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
-        raise HTTPException(403, detail={"error": "llm_judge_not_available", "message": f"LLM-Judge requires Pro+."})
     
-    # Try AI templates first, then system templates
+    # FREE TIER: mock only. Real systems require Pro+.
+    require_real_systems(customer, request.agent.type)
+    
+    if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
+        raise HTTPException(403, detail={"error": "llm_judge_not_available", "message": "LLM-Judge requires Pro+."})
+    
     suite = None
     is_system = request.template in SYSTEM_TEMPLATE_IDS
-    
     if is_system:
-        try:
-            suite = SystemTemplates.get(request.template)
-        except ValueError:
-            pass
-    
+        try: suite = SystemTemplates.get(request.template)
+        except ValueError: pass
     if not suite:
-        try:
-            suite = ExtendedTemplates.get(request.template)
+        try: suite = ExtendedTemplates.get(request.template)
         except ValueError:
             all_ids = [t["id"] for t in ExtendedTemplates.list_all() + SystemTemplates.list_all()]
             raise HTTPException(400, f"Unknown template: {request.template}. Available: {all_ids}")
-    
-    # For system templates, auto-select the right adapter if agent type is mock
-    if is_system and request.agent.type == "mock":
-        # System templates work with mock responses built into the mock adapter
-        pass
     
     probe = build_probe(request.agent, use_judge=request.use_llm_judge)
     result = probe.run(suite)
@@ -257,6 +252,10 @@ def run_template(request: TemplateRequest, x_api_key: str = Header(None)):
 @app.post("/api/run")
 def run_suite(request: SuiteConfig, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
+    
+    # FREE TIER: mock only
+    require_real_systems(customer, request.agent.type)
+    
     probe = build_probe(request.agent)
     result = probe.run(build_suite(request))
     track_usage(customer["customer_id"], test_runs=result.total)
@@ -268,6 +267,10 @@ def run_suite(request: SuiteConfig, x_api_key: str = Header(None)):
 @app.post("/api/run/quick")
 def quick_test(request: QuickTestRequest, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
+    
+    # FREE TIER: mock only
+    require_real_systems(customer, request.agent.type)
+    
     if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
         raise HTTPException(403, "LLM-Judge requires Pro+")
     probe = build_probe(request.agent, use_judge=request.use_llm_judge)

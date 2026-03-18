@@ -116,7 +116,7 @@ const AGENT_TYPES = [
   { id: "http", name: "Custom HTTP", desc: "Test any HTTP endpoint", fields: ["endpoint"] },
 ];
 
-function TemplatePreviewModal({ template, onClose, onRun, loading }) {
+function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
   const [agentType, setAgentType] = useState("mock");
   const [endpoint, setEndpoint] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -126,7 +126,7 @@ function TemplatePreviewModal({ template, onClose, onRun, loading }) {
 
   const info = TEMPLATE_INFO[template?.id] || { desc: "Run this test suite against your system.", tests: [], bestFor: "General" };
   const agentConfig = AGENT_TYPES.find(a => a.id === agentType);
-
+  const isFree = !userPlan || userPlan === "free";
   const handleRun = () => {
     const agent = { type: agentType };
     if (endpoint) agent.endpoint = endpoint;
@@ -277,8 +277,8 @@ function HomePage({ setView }) {
 
 function PricingPage({ setView, user }) {
   const plans = [
-    {id:"free",name:"Free",price:0,cta:user?"Current plan":"Get started",features:["25 test runs/month","All 33 templates","Keyword evaluations","1 API key","Community support"]},
-    {id:"pro",name:"Pro",price:49,cta:"Upgrade to Pro",popular:true,features:["2,000 test runs/month","All 33 templates","LLM-Judge evaluations","5 API keys","Email support","Certification badge"]},
+    {id:"free",name:"Free",price:0,cta:user?"Current plan":"Get started",features:["25 test runs/month","Mock testing only (demo)","All 33 templates (preview)","Keyword evaluations","1 API key"]},
+    {id:"pro",name:"Pro",price:49,cta:"Upgrade to Pro",popular:true,features:["2,000 test runs/month","Test real AI agents & APIs","LLM-Judge evaluations","5 API keys","Email support","Certification badge"]},
     {id:"enterprise",name:"Enterprise",price:499,cta:"Contact sales",features:["Unlimited test runs","All 33 templates","LLM-Judge evaluations","20 API keys","Priority support","Enterprise certification","Continuous monitoring","Compliance mapping"]},
   ];
   const handleUpgrade = async (planId) => {
@@ -362,7 +362,7 @@ function DashboardPage({ setView, user, setUser }) {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} onRun={runTemplate} loading={loading} />
+      <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} onRun={runTemplate} loading={loading} userPlan={user?.plan} />
 
       <div className="flex items-center justify-between mb-8"><h1 className="text-2xl font-bold text-white/90">Dashboard</h1><div className="flex items-center gap-3">{usage && (<div className="text-xs text-white/30 bg-white/[0.03] px-3 py-1.5 rounded-lg border border-white/[0.06]">{usage.usage?.test_runs||0} / {usage.limits?.limit==="unlimited"?"∞":usage.limits?.limit} runs · <span className="capitalize">{usage.plan}</span> plan</div>)}<button onClick={() => setView("pricing")} className="text-xs text-emerald-400/60 hover:text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-all">Upgrade</button><button onClick={logout} className="text-xs text-white/30 hover:text-white/60 px-3 py-1.5 transition-all">Log out</button></div></div>
       {runs.length > 0 && (<div className="grid grid-cols-4 gap-3 mb-8"><MetricCard label="Total runs" value={runs.length}/><MetricCard label="Tests" value={runs.reduce((a,r)=>a+r.total,0)}/><MetricCard label="Avg pass rate" value={`${(runs.reduce((a,r)=>a+r.pass_rate,0)/runs.length*100).toFixed(0)}%`} accent="text-emerald-400"/><MetricCard label="Avg score" value={`${(runs.reduce((a,r)=>a+r.avg_score,0)/runs.length*100).toFixed(0)}%`} accent="text-cyan-400"/></div>)}
