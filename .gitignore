@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.env
+.venv/
+results.json
+production_results.json
+billing/agentprobe.db
+node_modules/
+dashboard/dist/
+dashboard/node_modules/
+.DS_Store
+*.zip
+agentprobe_dashboard.jsx

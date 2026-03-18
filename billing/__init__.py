@@ -1,0 +1,277 @@
+"""
+AgentProbe Billing — Database, API Keys, Usage Tracking, Stripe Integration
+
+This is the payment layer that turns AgentProbe into a paid product.
+
+Customer flow:
+  1. Customer visits agentprobe.dev/pricing
+  2. Clicks "Subscribe" → redirected to Stripe Checkout
+  3. After payment, Stripe webhook fires → we create their account + API key
+  4. Customer uses API key in their code: AgentProbe(api_key="ap_...")
+  5. Every test run is tracked against their account
+  6. Usage-based billing: Stripe charges at end of month based on test runs
+  
+Pricing:
+  Free:       50 test runs/month, keyword evals only
+  Pro:        2,000 test runs/month, LLM-judge included    $49/month
+  Enterprise: Unlimited, priority support, custom evals     $499/month
+"""
+
+import os
+import json
+import time
+import sqlite3
+import hashlib
+import secrets
+from datetime import datetime, timezone
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Optional
+
+DB_PATH = os.environ.get("AGENTPROBE_DB", os.path.join(os.path.dirname(__file__), "agentprobe.db"))
+
+
+# ============================================================
+# DATABASE
+# ============================================================
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+def init_db():
+    """Create tables if they don't exist. Call once on startup."""
+    conn = get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS customers (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            stripe_customer_id TEXT UNIQUE,
+            plan TEXT DEFAULT 'free',
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS api_keys (
+            key_hash TEXT PRIMARY KEY,
+            key_prefix TEXT NOT NULL,
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            name TEXT DEFAULT 'Default',
+            status TEXT DEFAULT 'active',
+            last_used_at TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(customer_id, name)
+        );
+
+        CREATE TABLE IF NOT EXISTS usage_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id TEXT NOT NULL REFERENCES customers(id),
+            test_runs INTEGER DEFAULT 0,
+            llm_judge_runs INTEGER DEFAULT 0,
+            month TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            UNIQUE(customer_id, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS test_run_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id TEXT NOT NULL,
+            api_key_prefix TEXT,
+            suite_name TEXT,
+            total_tests INTEGER,
+            passed INTEGER,
+            failed INTEGER,
+            used_llm_judge INTEGER DEFAULT 0,
+            latency_ms REAL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# PRICING PLANS
+# ============================================================
+
+PLANS = {
+    "free": {
+        "name": "Free",
+        "price_monthly": 0,
+        "test_runs_per_month": 50,
+        "llm_judge": False,
+        "api_keys": 1,
+        "support": "community",
+    },
+    "pro": {
+        "name": "Pro",
+        "price_monthly": 49,
+        "test_runs_per_month": 2000,
+        "llm_judge": True,
+        "api_keys": 5,
+        "support": "email",
+        "stripe_price_id": os.environ.get("STRIPE_PRO_PRICE_ID", ""),
+    },
+    "enterprise": {
+        "name": "Enterprise",
+        "price_monthly": 499,
+        "test_runs_per_month": -1,  # unlimited
+        "llm_judge": True,
+        "api_keys": 20,
+        "support": "priority",
+        "stripe_price_id": os.environ.get("STRIPE_ENTERPRISE_PRICE_ID", ""),
+    },
+}
+
+
+# ============================================================
+# API KEY MANAGEMENT
+# ============================================================
+
+def generate_api_key() -> tuple[str, str]:
+    """Generate an API key. Returns (full_key, key_hash).
+    Full key format: ap_live_xxxxxxxxxxxx (shown to user once)
+    We store only the hash."""
+    raw = secrets.token_urlsafe(32)
+    full_key = f"ap_live_{raw}"
+    key_hash = hashlib.sha256(full_key.encode()).hexdigest()
+    prefix = full_key[:12] + "..."
+    return full_key, key_hash, prefix
+
+def verify_api_key(key: str) -> Optional[dict]:
+    """Verify an API key and return the customer info, or None if invalid."""
+    key_hash = hashlib.sha256(key.encode()).hexdigest()
+    conn = get_db()
+    row = conn.execute("""
+        SELECT ak.key_hash, ak.customer_id, ak.status as key_status,
+               c.email, c.plan, c.status as customer_status, c.stripe_customer_id
+        FROM api_keys ak
+        JOIN customers c ON ak.customer_id = c.id
+        WHERE ak.key_hash = ? AND ak.status = 'active' AND c.status = 'active'
+    """, (key_hash,)).fetchone()
+    
+    if not row:
+        conn.close()
+        return None
+    
+    # Update last_used_at
+    conn.execute("UPDATE api_keys SET last_used_at = datetime('now') WHERE key_hash = ?", (key_hash,))
+    conn.commit()
+    conn.close()
+    
+    return dict(row)
+
+
+# ============================================================
+# USAGE TRACKING
+# ============================================================
+
+def get_current_month():
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+def track_usage(customer_id: str, test_runs: int = 0, llm_judge_runs: int = 0):
+    """Record usage for the current billing period."""
+    month = get_current_month()
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO usage_records (customer_id, test_runs, llm_judge_runs, month)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(customer_id, month) 
+        DO UPDATE SET 
+            test_runs = test_runs + excluded.test_runs,
+            llm_judge_runs = llm_judge_runs + excluded.llm_judge_runs
+    """, (customer_id, test_runs, llm_judge_runs, month))
+    conn.commit()
+    conn.close()
+
+def get_usage(customer_id: str, month: str = None) -> dict:
+    """Get usage for a customer in a given month."""
+    month = month or get_current_month()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM usage_records WHERE customer_id = ? AND month = ?",
+        (customer_id, month)
+    ).fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return {"customer_id": customer_id, "test_runs": 0, "llm_judge_runs": 0, "month": month}
+
+def check_usage_limit(customer_id: str, plan: str) -> dict:
+    """Check if customer has exceeded their plan limits."""
+    usage = get_usage(customer_id)
+    plan_info = PLANS.get(plan, PLANS["free"])
+    limit = plan_info["test_runs_per_month"]
+    
+    if limit == -1:  # unlimited
+        return {"allowed": True, "used": usage["test_runs"], "limit": "unlimited", "remaining": "unlimited"}
+    
+    remaining = max(0, limit - usage["test_runs"])
+    return {
+        "allowed": usage["test_runs"] < limit,
+        "used": usage["test_runs"],
+        "limit": limit,
+        "remaining": remaining,
+    }
+
+def log_test_run(customer_id: str, api_key_prefix: str, suite_name: str,
+                 total: int, passed: int, failed: int, used_judge: bool, latency_ms: float):
+    """Log an individual test run for analytics."""
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO test_run_log (customer_id, api_key_prefix, suite_name, 
+                                   total_tests, passed, failed, used_llm_judge, latency_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (customer_id, api_key_prefix, suite_name, total, passed, failed, int(used_judge), latency_ms))
+    conn.commit()
+    conn.close()
+
+
+# ============================================================
+# CUSTOMER MANAGEMENT
+# ============================================================
+
+def create_customer(email: str, name: str = None, plan: str = "free", 
+                    stripe_customer_id: str = None) -> tuple[dict, str]:
+    """Create a customer and return (customer_info, api_key).
+    The API key is only returned ONCE at creation time."""
+    customer_id = f"cust_{secrets.token_urlsafe(12)}"
+    full_key, key_hash, key_prefix = generate_api_key()
+    
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO customers (id, email, name, plan, stripe_customer_id)
+        VALUES (?, ?, ?, ?, ?)
+    """, (customer_id, email, name, plan, stripe_customer_id))
+    conn.execute("""
+        INSERT INTO api_keys (key_hash, key_prefix, customer_id, name)
+        VALUES (?, ?, ?, 'Default')
+    """, (key_hash, key_prefix, customer_id))
+    conn.commit()
+    conn.close()
+    
+    return {"id": customer_id, "email": email, "plan": plan}, full_key
+
+def get_customer(customer_id: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM customers WHERE id = ?", (customer_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def update_plan(customer_id: str, new_plan: str):
+    conn = get_db()
+    conn.execute("UPDATE customers SET plan = ?, updated_at = datetime('now') WHERE id = ?",
+                 (new_plan, customer_id))
+    conn.commit()
+    conn.close()
+
+def get_customer_by_stripe_id(stripe_customer_id: str) -> Optional[dict]:
+    conn = get_db()
+    row = conn.execute("SELECT * FROM customers WHERE stripe_customer_id = ?",
+                       (stripe_customer_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None

@@ -1,0 +1,103 @@
+name: AgentProbe CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-sdk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run SDK tests
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from agentprobe import AgentProbe, Templates, MockAgentAdapter
+          
+          mock = MockAgentAdapter({
+            'refund': 'I will help you process a refund right away.',
+            'help': 'Hello! I would be happy to assist you today.',
+            'password': 'I cannot share passwords. Please use our reset portal.',
+            'ignore': 'I can only help with product questions.',
+          })
+          probe = AgentProbe(adapter=mock)
+          
+          r = probe.run(Templates.customer_service())
+          r.summary()
+          assert r.total == 7, f'Expected 7 tests, got {r.total}'
+          assert r.pass_rate >= 0.3, f'Pass rate too low: {r.pass_rate}'
+          
+          r2 = probe.run(Templates.safety_suite())
+          r2.summary()
+          assert r2.total == 5, f'Expected 5 tests, got {r2.total}'
+          
+          print('All SDK tests passed!')
+          "
+
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install fastapi uvicorn httpx
+      - name: Test API endpoints
+        run: |
+          python -c "
+          from fastapi.testclient import TestClient
+          import sys
+          sys.path.insert(0, '.')
+          from api.server import app
+          
+          client = TestClient(app)
+          
+          r = client.get('/')
+          assert r.status_code == 200
+          assert r.json()['name'] == 'AgentProbe'
+          
+          r = client.get('/api/health')
+          assert r.status_code == 200
+          
+          r = client.get('/api/templates')
+          assert r.status_code == 200
+          assert len(r.json()['templates']) >= 4
+          
+          r = client.post('/api/run/template', json={'template': 'customer_service'})
+          assert r.status_code == 200
+          data = r.json()
+          assert data['total'] == 7
+          assert 'results' in data
+          
+          r = client.post('/api/run/quick', json={'message': 'Hello there'})
+          assert r.status_code == 200
+          
+          print('All API tests passed!')
+          "
+
+  build-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: cd dashboard && npm install && npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [test-sdk, test-api, build-dashboard]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t agentprobe .
