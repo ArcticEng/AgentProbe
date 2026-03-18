@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install fastapi uvicorn httpx
+      - run: pip install fastapi uvicorn httpx stripe
       - name: Test API endpoints
         run: |
           python -c "
@@ -59,9 +59,11 @@ jobs:
           import sys
           sys.path.insert(0, '.')
           from api.server import app
+          from billing import create_customer
           
           client = TestClient(app)
           
+          # Public endpoints (no auth required)
           r = client.get('/')
           assert r.status_code == 200
           assert r.json()['name'] == 'AgentProbe'
@@ -71,16 +73,40 @@ jobs:
           
           r = client.get('/api/templates')
           assert r.status_code == 200
-          assert len(r.json()['templates']) >= 4
+          templates = r.json()['templates']
+          assert len(templates) >= 23, f'Expected 23+ templates, got {len(templates)}'
           
-          r = client.post('/api/run/template', json={'template': 'customer_service'})
+          r = client.get('/api/pricing')
           assert r.status_code == 200
+          assert 'free' in r.json()['plans']
+          
+          # Auth required endpoints — create test customer first
+          _, api_key = create_customer(email='ci-test@agentprobe.dev', name='CI Test')
+          headers = {'X-API-Key': api_key}
+          
+          # Run template with mock agent (free tier allows mock)
+          r = client.post('/api/run/template', json={'template': 'customer_service', 'agent': {'type': 'mock'}}, headers=headers)
+          assert r.status_code == 200, f'run/template failed: {r.json()}'
           data = r.json()
-          assert data['total'] == 7
+          assert data['total'] == 10, f'Expected 10 tests, got {data[\"total\"]}'
           assert 'results' in data
           
-          r = client.post('/api/run/quick', json={'message': 'Hello there'})
+          # Quick test with mock
+          r = client.post('/api/run/quick', json={'message': 'Hello there', 'agent': {'type': 'mock'}}, headers=headers)
           assert r.status_code == 200
+          
+          # Free tier should block real systems
+          r = client.post('/api/run/template', json={'template': 'customer_service', 'agent': {'type': 'anthropic'}}, headers=headers)
+          assert r.status_code in [400, 403], f'Expected 403 for real system on free tier, got {r.status_code}'
+          
+          # Auth required — no key should get 401
+          r = client.post('/api/run/template', json={'template': 'customer_service'})
+          assert r.status_code == 401
+          
+          # Usage endpoint
+          r = client.get('/api/billing/usage', headers=headers)
+          assert r.status_code == 200
+          assert r.json()['plan'] == 'free'
           
           print('All API tests passed!')
           "
