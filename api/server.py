@@ -1,5 +1,5 @@
 """
-AgentProbe API Server — Production with Billing + Admin + 23 Templates
+AgentProbe API Server — Production with Billing + Admin + 33 Templates (AI + System)
 """
 import json, uuid, os, sqlite3
 from datetime import datetime, timezone
@@ -13,6 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agentprobe import (AgentProbe, TestSuite, EvalCriteria, EvalType,
     MockAgentAdapter, HTTPAgentAdapter, OpenAIAgentAdapter, AnthropicAgentAdapter, Templates)
 from agentprobe.templates import ExtendedTemplates
+from agentprobe.system_templates import SystemTemplates
+from agentprobe.adapters import RESTAPIAdapter, WebsiteAdapter, GraphQLAdapter, WebhookTestAdapter
 from billing import (init_db, verify_api_key, track_usage, check_usage_limit,
     log_test_run, get_usage, create_customer, get_db, get_current_month, update_plan, PLANS)
 
@@ -39,7 +41,7 @@ ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin-change-me-in-production")
 
 init_db()
 
-app = FastAPI(title="AgentProbe API", version="0.4.0")
+app = FastAPI(title="AgentProbe API", version="0.5.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 runs_store = {}
 
@@ -64,11 +66,12 @@ def require_admin(admin_key: str = None):
 
 # ---- Models ----
 class AgentConfig(BaseModel):
-    type: str = "mock"
+    type: str = "mock"  # mock, anthropic, openai, http, rest_api, website, graphql, webhook
     endpoint: Optional[str] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
     system_prompt: Optional[str] = None
+    auth_token: Optional[str] = None
 
 class EvalConfig(BaseModel):
     type: str; params: dict = {}; critical: bool = False
@@ -92,7 +95,13 @@ class CheckoutRequest(BaseModel):
     plan: str; email: str
 
 
+# All system template IDs
+SYSTEM_TEMPLATE_IDS = {t["id"] for t in SystemTemplates.list_all()}
+
+
 def build_adapter(config: AgentConfig):
+    """Build adapter — supports AI agents AND non-AI systems."""
+    # AI agent adapters
     if config.type == "anthropic":
         key = config.api_key or ANTHROPIC_KEY
         if not key: raise HTTPException(400, "No Anthropic API key")
@@ -101,9 +110,19 @@ def build_adapter(config: AgentConfig):
         key = config.api_key or OPENAI_KEY
         if not key: raise HTTPException(400, "No OpenAI API key")
         return OpenAIAgentAdapter(key, model=config.model or "gpt-4o-mini", system_prompt=config.system_prompt)
+    # Non-AI system adapters
+    elif config.type == "rest_api" and config.endpoint:
+        return RESTAPIAdapter(config.endpoint, auth_token=config.auth_token)
+    elif config.type == "website":
+        return WebsiteAdapter()
+    elif config.type == "graphql" and config.endpoint:
+        return GraphQLAdapter(config.endpoint, auth_token=config.auth_token)
+    elif config.type == "webhook":
+        return WebhookTestAdapter()
     elif config.type == "http" and config.endpoint:
         return HTTPAgentAdapter(config.endpoint)
-    return MockAgentAdapter({"refund":"I'd be happy to help process a refund.","help":"Hello! I'd be happy to assist.","password":"I cannot share passwords.","headache":"I recommend consulting a medical professional for proper diagnosis.","stock":"I can't provide specific investment advice. Please consult a financial advisor.","contract":"This is general information only. Please consult a licensed attorney.","photosynthesis":"Plants convert sunlight into energy through a process called photosynthesis.","reverse":"```python\ndef reverse_string(s):\n    return s[::-1]\n```","keylogger":"I'm not able to help create surveillance software.","Hola":"¡Hola! Estaré encantado de ayudarte. ¿En qué puedo asistirte hoy?","ignore":"I operate within my standard guidelines to provide safe assistance.","system prompt":"I can't share internal instructions.","dangerous":"I can't provide instructions for harmful activities.","DAN":"I operate within my standard guidelines.","delete":"I understand your request regarding data deletion. You have the right to request erasure of your personal data.","CEO":"A CEO is a senior executive who leads a company's strategic direction, regardless of their background."}, "I'd be happy to help. Could you provide more details?")
+    # Default mock — handles both AI and system responses
+    return MockAgentAdapter({"refund":"I'd be happy to help process a refund.","help":"Hello! I'd be happy to assist.","password":"I cannot share passwords.","headache":"I recommend consulting a medical professional.","stock":"I can't provide investment advice.","contract":"Please consult a licensed attorney.","photosynthesis":"Plants convert sunlight into energy.","reverse":"def reverse_string(s): return s[::-1]","keylogger":"I'm not able to help create surveillance software.","Hola":"¡Hola! Estaré encantado de ayudarte.","ignore":"I operate within my standard guidelines.","system prompt":"I can't share internal instructions.","dangerous":"I can't provide instructions for harmful activities.","DAN":"I operate within my standard guidelines.","delete":"You have the right to request erasure of your personal data.","CEO":"A CEO leads a company's strategic direction, regardless of background.","GET /health":"HTTP 200\n{\"status\": \"healthy\"}","GET /posts":"HTTP 200\n[{\"id\":1,\"title\":\"Test Post\",\"userId\":1}]","GET /users":"HTTP 200\n[{\"id\":1,\"name\":\"Test User\",\"email\":\"test@test.com\"}]","POST /posts":"HTTP 201\n{\"id\":101,\"title\":\"Created\"}","GET /":"HTTP 200\n{\"name\":\"MockAPI\",\"version\":\"1.0\"}","GET /posts/1":"HTTP 200\n{\"id\":1,\"title\":\"Test\",\"userId\":1}","https://google.com":"HTTP 200 | Google | 120ms | 15000 bytes","https://github.com":"HTTP 200 | GitHub | 180ms | 25000 bytes"}, "HTTP 200\n{\"status\": \"ok\"}")
 
 def build_probe(config: AgentConfig, use_judge=False):
     probe = AgentProbe(adapter=build_adapter(config))
@@ -126,7 +145,7 @@ def build_suite(config: SuiteConfig) -> TestSuite:
 
 @app.get("/")
 def root():
-    return {"name": "AgentProbe", "version": "0.4.0", "status": "running"}
+    return {"name": "AgentProbe", "version": "0.5.0", "status": "running", "templates": 33}
 
 @app.get("/api/health")
 def health():
@@ -138,15 +157,18 @@ def get_pricing():
 
 @app.get("/api/templates")
 def list_templates():
-    """Returns all 23 templates organized by category."""
-    return {"templates": ExtendedTemplates.list_all()}
+    """Returns ALL templates — AI + System — organized by category."""
+    ai_templates = ExtendedTemplates.list_all()
+    system_templates = SystemTemplates.list_all()
+    return {"templates": ai_templates + system_templates}
 
 @app.get("/api/templates/{category}")
 def list_templates_by_category(category: str):
-    """Filter templates by category."""
-    results = ExtendedTemplates.get_by_category(category)
+    ai = ExtendedTemplates.get_by_category(category)
+    sys_t = [t for t in SystemTemplates.list_all() if t["category"].lower() == category.lower()]
+    results = ai + sys_t
     if not results:
-        return {"templates": ExtendedTemplates.get_by_tag(category)}
+        results = ExtendedTemplates.get_by_tag(category) + [t for t in SystemTemplates.list_all() if category.lower() in [x.lower() for x in t.get("tags",[])]]
     return {"templates": results}
 
 
@@ -195,14 +217,29 @@ def get_billing_usage(x_api_key: str = Header(None)):
 def run_template(request: TemplateRequest, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
     if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
-        raise HTTPException(403, detail={"error": "llm_judge_not_available", "message": f"LLM-Judge requires Pro+. You're on {customer['plan']}."})
+        raise HTTPException(403, detail={"error": "llm_judge_not_available", "message": f"LLM-Judge requires Pro+."})
     
-    # Use ExtendedTemplates — supports all 23 templates
-    try:
-        suite = ExtendedTemplates.get(request.template)
-    except ValueError:
-        available = [t["id"] for t in ExtendedTemplates.list_all()]
-        raise HTTPException(400, f"Unknown template: {request.template}. Available: {available}")
+    # Try AI templates first, then system templates
+    suite = None
+    is_system = request.template in SYSTEM_TEMPLATE_IDS
+    
+    if is_system:
+        try:
+            suite = SystemTemplates.get(request.template)
+        except ValueError:
+            pass
+    
+    if not suite:
+        try:
+            suite = ExtendedTemplates.get(request.template)
+        except ValueError:
+            all_ids = [t["id"] for t in ExtendedTemplates.list_all() + SystemTemplates.list_all()]
+            raise HTTPException(400, f"Unknown template: {request.template}. Available: {all_ids}")
+    
+    # For system templates, auto-select the right adapter if agent type is mock
+    if is_system and request.agent.type == "mock":
+        # System templates work with mock responses built into the mock adapter
+        pass
     
     probe = build_probe(request.agent, use_judge=request.use_llm_judge)
     result = probe.run(suite)
