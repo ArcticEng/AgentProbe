@@ -102,7 +102,7 @@ PLANS = {
     "free": {
         "name": "Free",
         "price_monthly": 0,
-        "test_runs_per_month": 50,
+        "test_runs_per_month": 25,
         "llm_judge": False,
         "api_keys": 1,
         "support": "community",

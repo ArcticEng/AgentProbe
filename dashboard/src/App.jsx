@@ -90,7 +90,7 @@ function HomePage({ setView }) {
       </div>
       <div className="text-center pb-20">
         <h2 className="text-2xl font-bold text-white/80 mb-3">Ready to ship safe AI?</h2>
-        <p className="text-white/30 mb-6">Free tier includes 50 test runs/month. No credit card required.</p>
+        <p className="text-white/30 mb-6">Free tier includes 25 test runs/month. No credit card required.</p>
         <button onClick={() => setView("signup")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl transition-all text-sm">Create free account</button>
       </div>
     </div>
@@ -99,9 +99,9 @@ function HomePage({ setView }) {
 
 function PricingPage({ setView, user }) {
   const plans = [
-    {id:"free",name:"Free",price:0,cta:user?"Current plan":"Get started",features:["50 test runs/month","Keyword evaluations","1 API key","5 pre-built templates","Community support"]},
-    {id:"pro",name:"Pro",price:49,cta:"Upgrade to Pro",popular:true,features:["2,000 test runs/month","LLM-Judge evaluations","5 API keys","All 33 templates","Email support","Certification badge"]},
-    {id:"enterprise",name:"Enterprise",price:499,cta:"Contact sales",features:["Unlimited test runs","LLM-Judge evaluations","20 API keys","Custom templates","Priority support","Enterprise certification","Continuous monitoring","Compliance mapping"]},
+    {id:"free",name:"Free",price:0,cta:user?"Current plan":"Get started",features:["25 test runs/month","All 33 templates","Keyword evaluations","1 API key","Community support"]},
+    {id:"pro",name:"Pro",price:49,cta:"Upgrade to Pro",popular:true,features:["2,000 test runs/month","All 33 templates","LLM-Judge evaluations","5 API keys","Email support","Certification badge"]},
+    {id:"enterprise",name:"Enterprise",price:499,cta:"Contact sales",features:["Unlimited test runs","All 33 templates","LLM-Judge evaluations","20 API keys","Priority support","Enterprise certification","Continuous monitoring","Compliance mapping"]},
   ];
   const handleUpgrade = async (planId) => {
     if (planId === "free") return setView("signup");
@@ -125,7 +125,7 @@ function SignupPage({ setView, setUser }) {
     <div className="max-w-lg mx-auto px-6 py-20"><div className="bg-white/[0.03] border border-emerald-500/20 rounded-2xl p-8 text-center"><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div><h2 className="text-xl font-bold text-white/90 mb-2">Account created!</h2><p className="text-white/40 text-sm mb-6">Save your API key — it will only be shown once.</p><div className="bg-black/40 rounded-xl p-4 mb-6 border border-white/[0.08]"><div className="text-[10px] text-white/30 uppercase tracking-wider mb-2">Your API Key</div><code className="text-sm text-emerald-400 font-mono break-all select-all">{result.api_key}</code></div><button onClick={() => navigator.clipboard.writeText(result.api_key)} className="bg-white/[0.06] hover:bg-white/[0.1] text-white/70 px-6 py-2 rounded-xl text-sm border border-white/[0.08] transition-all mb-4 w-full">Copy API key</button><button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-6 py-2.5 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></div></div>
   );
   return (
-    <div className="max-w-md mx-auto px-6 py-20"><div className="text-center mb-8"><h1 className="text-3xl font-bold text-white/90 mb-2">Create your account</h1><p className="text-white/35 text-sm">Free tier — 50 test runs/month, no credit card required</p></div><form onSubmit={handleSignup} className="space-y-4"><div><label className="text-xs text-white/40 mb-1 block">Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none transition-all"/></div><div><label className="text-xs text-white/40 mb-1 block">Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" required className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none transition-all"/></div>{error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">{error}</div>}<button type="submit" disabled={loading||!email} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-semibold py-3 rounded-xl text-sm transition-all">{loading?"Creating account...":"Create free account"}</button></form><p className="text-center text-xs text-white/25 mt-6">Already have an account? <button onClick={() => setView("login")} className="text-emerald-400/60 hover:text-emerald-400">Log in</button></p></div>
+    <div className="max-w-md mx-auto px-6 py-20"><div className="text-center mb-8"><h1 className="text-3xl font-bold text-white/90 mb-2">Create your account</h1><p className="text-white/35 text-sm">Free tier — 25 test runs/month, no credit card required</p></div><form onSubmit={handleSignup} className="space-y-4"><div><label className="text-xs text-white/40 mb-1 block">Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none transition-all"/></div><div><label className="text-xs text-white/40 mb-1 block">Email *</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@company.com" required className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none transition-all"/></div>{error && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">{error}</div>}<button type="submit" disabled={loading||!email} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-semibold py-3 rounded-xl text-sm transition-all">{loading?"Creating account...":"Create free account"}</button></form><p className="text-center text-xs text-white/25 mt-6">Already have an account? <button onClick={() => setView("login")} className="text-emerald-400/60 hover:text-emerald-400">Log in</button></p></div>
   );
 }
 
@@ -179,7 +179,7 @@ function DashboardPage({ setView, user, setUser }) {
       {(() => {
         const cats = {};
         templates.forEach(t => { const c = t.category || "General"; if (!cats[c]) cats[c] = []; cats[c].push(t); });
-        const icons = {"AI Chatbots":"💬","AI Applications":"🧠","Regulated Industries":"🏥","System Reliability":"⚡","Security":"🛡","Compliance":"📋","Performance":"📊","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤"};
+        const icons = {"AI Chatbots":"💬","AI Applications":"🧠","Regulated Industries":"🏥","System Reliability":"⚡","Security":"🛡","Compliance":"📋","Performance":"📊","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤"};
         return Object.entries(cats).map(([cat, items]) => (
           <div key={cat} className="mb-6">
             <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-3 flex items-center gap-2"><span>{icons[cat]||"📦"}</span> {cat} <span className="text-[10px] text-white/20 font-mono bg-white/[0.03] px-1.5 py-0.5 rounded">{items.length}</span></h2>
