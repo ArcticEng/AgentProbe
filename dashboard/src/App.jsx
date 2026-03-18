@@ -146,7 +146,7 @@ results.summary()
 function PricingPage({ setView, user }) {
   const plans = [
     { id: "free", name: "Free", price: 0, runs: "50", judge: false, keys: 1, support: "Community", cta: user ? "Current plan" : "Get started", features: ["50 test runs/month", "Keyword evaluations", "1 API key", "5 pre-built templates", "Community support"] },
-    { id: "pro", name: "Pro", price: 49, runs: "2,000", judge: true, keys: 5, support: "Email", cta: "Upgrade to Pro", popular: true, features: ["2,000 test runs/month", "LLM-Judge evaluations", "5 API keys", "All templates", "Email support", "Certification badge"] },
+    { id: "pro", name: "Pro", price: 49, runs: "2,000", judge: true, keys: 5, support: "Email", cta: "Upgrade to Pro", popular: true, features: ["2,000 test runs/month", "LLM-Judge evaluations", "5 API keys", "All 23 templates", "Email support", "Certification badge"] },
     { id: "enterprise", name: "Enterprise", price: 499, runs: "Unlimited", judge: true, keys: 20, support: "Priority", cta: "Contact sales", features: ["Unlimited test runs", "LLM-Judge evaluations", "20 API keys", "Custom templates", "Priority support", "Enterprise certification", "Continuous monitoring", "Compliance mapping"] },
   ];
 
@@ -333,9 +333,9 @@ function DocsPage() {
         </div>
       ))}
       <div className="mt-12 p-6 bg-white/[0.02] border border-white/[0.06] rounded-xl">
-        <h2 className="text-sm font-semibold text-white/60 mb-3">Available Templates</h2>
+        <h2 className="text-sm font-semibold text-white/60 mb-3">Available Templates (23)</h2>
         <div className="grid grid-cols-2 gap-2">
-          {["customer_service (7 tests)", "coding_assistant (5 tests)", "data_analyst (3 tests)", "safety (5 tests)", "performance (20 tests)"].map(t => (
+          {["customer_service (10)", "sales_agent (6)", "hr_assistant (6)", "rag_system (6)", "search_system (5)", "summarization (4)", "content_generation (5)", "code_generation (7)", "translation (4)", "healthcare_ai (6)", "financial_ai (6)", "legal_ai (4)", "education_ai (5)", "api_reliability (10)", "error_handling (6)", "safety_suite (5)", "advanced_adversarial (8)", "pii_comprehensive (7)", "gdpr_compliance (5)", "bias_fairness (6)", "accessibility (4)", "performance_suite (20)", "stress_test (50)"].map(t => (
             <div key={t} className="text-xs text-white/40 bg-white/[0.02] rounded-lg px-3 py-2 font-mono">{t}</div>
           ))}
         </div>
@@ -458,19 +458,32 @@ function DashboardPage({ setView, user, setUser }) {
         </div>
       )}
 
-      <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Run a test suite</h2>
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        {templates.map(t => (
-          <button key={t.id} onClick={() => runTemplate(t.id)} disabled={loading}
-            className="text-left p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-emerald-500/20 rounded-xl transition-all group disabled:opacity-40">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-semibold text-white/80 group-hover:text-emerald-300 transition-colors">{t.name}</span>
-              <span className="text-[10px] font-mono text-white/20 bg-white/[0.03] px-2 py-0.5 rounded">{t.tests} tests</span>
+      {(() => {
+        const cats = {};
+        templates.forEach(t => { const c = t.category || "General"; if (!cats[c]) cats[c] = []; cats[c].push(t); });
+        const icons = {"AI Chatbots":"💬","AI Applications":"🧠","Regulated Industries":"🏥","System Reliability":"⚡","Security":"🛡","Compliance":"📋","Performance":"📊"};
+        return Object.entries(cats).map(([cat, items]) => (
+          <div key={cat} className="mb-6">
+            <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <span>{icons[cat] || "📦"}</span> {cat}
+              <span className="text-[10px] text-white/20 font-mono bg-white/[0.03] px-1.5 py-0.5 rounded">{items.length}</span>
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {items.map(t => (
+                <button key={t.id} onClick={() => runTemplate(t.id)} disabled={loading}
+                  className="text-left p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-emerald-500/20 rounded-xl transition-all group disabled:opacity-40">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-semibold text-white/80 group-hover:text-emerald-300 transition-colors">{t.name}</span>
+                    <span className="text-[10px] font-mono text-white/15 bg-white/[0.03] px-1.5 py-0.5 rounded">{t.tests}</span>
+                  </div>
+                  {t.tags && <div className="flex gap-1 mt-1.5">{t.tags.slice(0,2).map(tag => <span key={tag} className="text-[9px] text-white/20 bg-white/[0.03] px-1.5 py-0.5 rounded">{tag}</span>)}</div>}
+                  <div className="text-[10px] text-emerald-400/50 group-hover:text-emerald-400 transition-colors mt-2">{loading ? "Running..." : "Run →"}</div>
+                </button>
+              ))}
             </div>
-            <div className="text-[10px] text-emerald-400/60 group-hover:text-emerald-400 transition-colors mt-2">{loading ? "Running..." : "Run suite →"}</div>
-          </button>
-        ))}
-      </div>
+          </div>
+        ));
+      })()}
 
       {runs.length > 0 && (
         <div>
