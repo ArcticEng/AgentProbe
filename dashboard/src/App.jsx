@@ -179,7 +179,7 @@ function DashboardPage({ setView, user, setUser }) {
       {(() => {
         const cats = {};
         templates.forEach(t => { const c = t.category || "General"; if (!cats[c]) cats[c] = []; cats[c].push(t); });
-        const icons = {"AI Chatbots":"💬","AI Applications":"🧠","Regulated Industries":"🏥","System Reliability":"⚡","Security":"🛡","Compliance":"📋","Performance":"📊","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤"};
+        const icons = {"AI Chatbots":"💬","AI Applications":"🧠","Regulated Industries":"🏥","System Reliability":"⚡","Security":"🛡","Compliance":"📋","Performance":"📊","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤","API Testing":"🔌","Website Testing":"🌐","User Journeys":"🛤"};
         return Object.entries(cats).map(([cat, items]) => (
           <div key={cat} className="mb-6">
             <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-3 flex items-center gap-2"><span>{icons[cat]||"📦"}</span> {cat} <span className="text-[10px] text-white/20 font-mono bg-white/[0.03] px-1.5 py-0.5 rounded">{items.length}</span></h2>
