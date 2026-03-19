@@ -67,6 +67,11 @@ _rate_lock = threading.Lock()
 def check_rate_limit(ip: str, limit: int = 60, window: int = 60) -> bool:
     now = time.time()
     with _rate_lock:
+        # Periodic cleanup — remove stale IPs every 1000 checks
+        if len(_rate_limits) > 10000:
+            stale = [k for k, v in _rate_limits.items() if not v or now - v[-1] > window * 2]
+            for k in stale:
+                del _rate_limits[k]
         _rate_limits[ip] = [t for t in _rate_limits[ip] if now - t < window]
         if len(_rate_limits[ip]) >= limit:
             return False

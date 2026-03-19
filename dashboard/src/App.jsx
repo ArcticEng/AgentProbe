@@ -438,8 +438,61 @@ function DashboardPage({ setView, user, setUser }) {
   );
 }
 
+
+function BillingSuccessPage({ setView, user, setUser }) {
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    // Refresh plan from API after PayFast redirect
+    apiFetch("/billing/usage").then(data => {
+      const updatedUser = { ...user, plan: data.plan };
+      localStorage.setItem("ap_user", JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      setStatus("success");
+    }).catch(() => {
+      // ITN may not have arrived yet — retry after 3s
+      setTimeout(() => {
+        apiFetch("/billing/usage").then(data => {
+          const updatedUser = { ...user, plan: data.plan };
+          localStorage.setItem("ap_user", JSON.stringify(updatedUser));
+          setUser(updatedUser);
+          setStatus("success");
+        }).catch(() => setStatus("pending"));
+      }, 3000);
+    });
+  }, []);
+
+  return (
+    <div className="max-w-lg mx-auto px-6 py-20">
+      <div className="bg-white/[0.03] border border-emerald-500/20 rounded-2xl p-8 text-center">
+        {status === "loading" && (
+          <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl animate-pulse">⏳</div>
+          <h2 className="text-xl font-bold text-white/90 mb-2">Processing payment...</h2>
+          <p className="text-white/40 text-sm">Confirming your upgrade with PayFast.</p></>
+        )}
+        {status === "success" && (
+          <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
+          <h2 className="text-xl font-bold text-white/90 mb-2">Payment successful!</h2>
+          <p className="text-white/40 text-sm mb-6">Your account has been upgraded to <span className="text-emerald-400 font-semibold capitalize">{user?.plan}</span>.</p>
+          <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
+        )}
+        {status === "pending" && (
+          <><div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">⏳</div>
+          <h2 className="text-xl font-bold text-white/90 mb-2">Payment received!</h2>
+          <p className="text-white/40 text-sm mb-4">Your upgrade is being processed. This usually takes a few seconds.</p>
+          <p className="text-white/30 text-xs mb-6">If your plan hasn't updated yet, log out and back in.</p>
+          <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState("home");
+  const [view, setView] = useState(() => {
+    if (window.location.pathname === "/billing/success") return "billing_success";
+    return "home";
+  });
   const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem("ap_user")); } catch { return null; } });
   return (
     <div className="min-h-screen bg-[#06060a] text-white">
@@ -449,6 +502,7 @@ export default function App() {
       {view === "signup" && <SignupPage setView={setView} setUser={setUser} />}
       {view === "login" && <LoginPage setView={setView} setUser={setUser} />}
       {view === "docs" && <DocsPage />}
+      {view === "billing_success" && <BillingSuccessPage setView={setView} user={user} setUser={setUser} />}
       {view === "dashboard" && <DashboardPage setView={setView} user={user} setUser={setUser} />}
       <footer className="border-t border-white/[0.04] py-8 text-center text-xs text-white/20 mt-20">AgentProbe · Universal AI & System Verification · © {new Date().getFullYear()}</footer>
     </div>

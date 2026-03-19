@@ -10,7 +10,7 @@ PayFast flow:
 Sandbox credentials:
   PAYFAST_MERCHANT_ID=10000100
   PAYFAST_MERCHANT_KEY=46f0cd694581a
-  PAYFAST_PASSPHRASE=  (leave empty for sandbox)
+  PAYFAST_PASSPHRASE=jt7NOE43FZPn  (sandbox passphrase)
 """
 
 import os
