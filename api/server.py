@@ -2,15 +2,14 @@
 AgentProbe API Server v0.7.0 — Production-grade
 - Persistent test runs (SQLite, not in-memory)
 - API key caching (5min TTL)
-- Rate limiting (60 req/min per IP for unauthenticated, 120 for authenticated)
-- Request timeouts
-- Proper error handling
+- Rate limiting (60 req/min per IP, 120 for authenticated)
+- PayFast + Stripe payment support
 - Free tier: mock only
 """
 import json, uuid, os, time, threading
 from collections import defaultdict
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request, Header, Query, Response
+from fastapi import FastAPI, HTTPException, Request, Header, Query, Response, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -31,6 +30,11 @@ try:
 except ImportError:
     HAS_STRIPE = False
 
+try:
+    from billing.payfast_integration import (create_payfast_checkout, handle_itn, HAS_PAYFAST)
+except ImportError:
+    HAS_PAYFAST = False
+
 def load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
     if os.path.exists(env_path):
@@ -45,6 +49,7 @@ load_env()
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY", "")
 DOMAIN = os.environ.get("DOMAIN", "http://localhost:3000")
+API_DOMAIN = os.environ.get("API_DOMAIN", "https://agentprobe-api.fly.dev")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin-change-me-in-production")
 
 init_db()
@@ -54,13 +59,12 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 
 # ============================================================
-# RATE LIMITING — sliding window per IP
+# RATE LIMITING
 # ============================================================
 _rate_limits = defaultdict(list)
 _rate_lock = threading.Lock()
 
 def check_rate_limit(ip: str, limit: int = 60, window: int = 60) -> bool:
-    """Returns True if allowed, False if rate limited."""
     now = time.time()
     with _rate_lock:
         _rate_limits[ip] = [t for t in _rate_limits[ip] if now - t < window]
@@ -72,17 +76,11 @@ def check_rate_limit(ip: str, limit: int = 60, window: int = 60) -> bool:
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
     ip = request.client.host if request.client else "unknown"
-    # More generous for authenticated requests
     has_key = request.headers.get("x-api-key")
     limit = 120 if has_key else 60
-
     if not check_rate_limit(ip, limit=limit):
-        return Response(
-            content=json.dumps({"error": "rate_limited", "message": f"Too many requests. Limit: {limit}/min"}),
-            status_code=429, media_type="application/json"
-        )
-
-    # Add timing header
+        return Response(content=json.dumps({"error": "rate_limited", "message": f"Too many requests. Limit: {limit}/min"}),
+            status_code=429, media_type="application/json")
     start = time.time()
     response = await call_next(request)
     response.headers["X-Response-Time"] = f"{(time.time()-start)*1000:.0f}ms"
@@ -195,14 +193,11 @@ def root():
 
 @app.get("/api/health")
 def health():
-    # Deep health check — verify DB is accessible
     try:
-        conn = get_db()
-        conn.execute("SELECT 1").fetchone()
-        db_ok = True
+        conn = get_db(); conn.execute("SELECT 1").fetchone(); db_ok = True
     except:
         db_ok = False
-    return {"status": "healthy" if db_ok else "degraded", "db": db_ok, "stripe": HAS_STRIPE}
+    return {"status": "healthy" if db_ok else "degraded", "db": db_ok, "stripe": HAS_STRIPE, "payfast": HAS_PAYFAST}
 
 @app.get("/api/pricing")
 def get_pricing():
@@ -223,7 +218,7 @@ def list_templates_by_category(category: str):
 
 
 # ============================================================
-# BILLING ENDPOINTS
+# BILLING ENDPOINTS — Stripe + PayFast
 # ============================================================
 
 @app.post("/api/billing/signup")
@@ -235,14 +230,57 @@ def signup(request: SignupRequest):
         if "UNIQUE" in str(e): raise HTTPException(409, "Email already registered")
         raise HTTPException(500, str(e))
 
+# --- Unified checkout (tries PayFast first, then Stripe) ---
 @app.post("/api/billing/checkout")
 def checkout(request: CheckoutRequest):
-    if not HAS_STRIPE: raise HTTPException(503, "Stripe not configured")
-    try:
-        url = create_checkout_session(request.plan, request.email, f"{DOMAIN}/billing/success", f"{DOMAIN}/pricing")
-        return {"checkout_url": url}
-    except ValueError as e: raise HTTPException(400, str(e))
+    """Create a checkout session. Uses PayFast if available, falls back to Stripe."""
+    if HAS_PAYFAST:
+        try:
+            url = create_payfast_checkout(
+                plan=request.plan,
+                email=request.email,
+                return_url=f"{DOMAIN}/billing/success",
+                cancel_url=f"{DOMAIN}/pricing",
+                notify_url=f"{API_DOMAIN}/api/billing/payfast/itn",
+            )
+            return {"checkout_url": url, "provider": "payfast"}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    elif HAS_STRIPE:
+        try:
+            url = create_checkout_session(request.plan, request.email, f"{DOMAIN}/billing/success", f"{DOMAIN}/pricing")
+            return {"checkout_url": url, "provider": "stripe"}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    else:
+        raise HTTPException(503, "No payment provider configured")
 
+# --- PayFast ITN (Instant Transaction Notification) ---
+@app.post("/api/billing/payfast/itn")
+async def payfast_itn(request: Request):
+    """PayFast calls this URL after payment. Form-encoded POST."""
+    if not HAS_PAYFAST:
+        raise HTTPException(503, "PayFast not configured")
+    
+    # PayFast sends form-encoded data
+    form_data = await request.form()
+    post_data = dict(form_data)
+    
+    client_ip = request.client.host if request.client else "unknown"
+    # Check for Fly.io proxy headers
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    
+    try:
+        result = handle_itn(post_data, client_ip)
+        print(f"[PayFast ITN] Processed: {result}")
+        return Response(content="OK", status_code=200)
+    except ValueError as e:
+        print(f"[PayFast ITN] Error: {e}")
+        raise HTTPException(400, str(e))
+
+# --- Stripe webhook (kept for when you migrate later) ---
 @app.post("/api/billing/webhook")
 async def stripe_webhook(request: Request):
     if not HAS_STRIPE: raise HTTPException(503, "Stripe not configured")
@@ -267,7 +305,6 @@ def get_billing_usage(x_api_key: str = Header(None)):
 def run_template(request: TemplateRequest, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
     require_real_systems(customer, request.agent.type)
-
     if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
         raise HTTPException(403, detail={"error": "llm_judge_not_available", "message": "LLM-Judge requires Pro+."})
 
@@ -292,28 +329,22 @@ def run_template(request: TemplateRequest, x_api_key: str = Header(None)):
     judge_count = sum(1 for r in result.results for e in r.eval_results if e.eval_type.value == "llm_judge")
     track_usage(customer["customer_id"], test_runs=test_count, llm_judge_runs=judge_count)
     log_test_run(customer["customer_id"], x_api_key[:12]+"...", result.suite_name, result.total, result.passed, result.failed, request.use_llm_judge, result.avg_latency)
-
     run_id = str(uuid.uuid4())[:8]
     run_data = result.to_dict()
     run_data["id"] = run_id
     run_data["usage_after"] = check_usage_limit(customer["customer_id"], customer["plan"])
-
-    # PERSIST to database — survives restarts
     save_test_run(run_id, customer["customer_id"], result.suite_name, run_data)
-
     return run_data
 
 @app.post("/api/run")
 def run_suite(request: SuiteConfig, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
     require_real_systems(customer, request.agent.type)
-
     try:
         probe = build_probe(request.agent)
         result = probe.run(build_suite(request))
     except Exception as e:
         raise HTTPException(500, detail={"error": "test_execution_failed", "message": str(e)})
-
     track_usage(customer["customer_id"], test_runs=result.total)
     run_id = str(uuid.uuid4())[:8]
     run_data = result.to_dict()
@@ -325,10 +356,8 @@ def run_suite(request: SuiteConfig, x_api_key: str = Header(None)):
 def quick_test(request: QuickTestRequest, x_api_key: str = Header(None)):
     customer = authenticate(x_api_key)
     require_real_systems(customer, request.agent.type)
-
     if request.use_llm_judge and not PLANS.get(customer["plan"], {}).get("llm_judge"):
         raise HTTPException(403, "LLM-Judge requires Pro+")
-
     try:
         probe = build_probe(request.agent, use_judge=request.use_llm_judge)
         suite = TestSuite("Quick Test")
@@ -342,7 +371,6 @@ def quick_test(request: QuickTestRequest, x_api_key: str = Header(None)):
         result = probe.run(suite)
     except Exception as e:
         raise HTTPException(500, detail={"error": "test_execution_failed", "message": str(e)})
-
     track_usage(customer["customer_id"], test_runs=1, llm_judge_runs=1 if request.use_llm_judge else 0)
     run_id = str(uuid.uuid4())[:8]
     run_data = result.to_dict()

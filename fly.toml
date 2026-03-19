@@ -26,6 +26,8 @@ primary_region = "jnb"
   AGENTPROBE_DB = "/data/agentprobe.db"
   CERT_DB = "/data/certifications.db"
   DOMAIN = "https://agent-probe-eight.vercel.app"
+  API_DOMAIN = "https://agentprobe-api.fly.dev"
+  PAYFAST_SANDBOX = "true"
 
 [checks]
   [checks.health]
