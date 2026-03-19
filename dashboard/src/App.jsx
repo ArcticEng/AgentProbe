@@ -230,6 +230,16 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
                 className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
             </div>
           )}
+
+          {agentConfig?.fields.includes("website_url") && (
+            <div className="mb-3">
+              <label className="text-[10px] text-white/30 mb-1 block">Website URL to test</label>
+              <input type="text" value={endpoint} onChange={e => setEndpoint(e.target.value)}
+                placeholder="https://yoursite.com"
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
+              <div className="text-[9px] text-white/15 mt-1">Tests uptime, SSL certificate, response time, and content</div>
+            </div>
+          )}
         </div>
 
         {/* Run button */}
