@@ -112,7 +112,7 @@ const AGENT_TYPES = [
   { id: "anthropic", name: "Anthropic (Claude)", desc: "Test a Claude-powered AI agent", fields: ["api_key", "model", "system_prompt"] },
   { id: "openai", name: "OpenAI (GPT)", desc: "Test an OpenAI-powered AI agent", fields: ["api_key", "model", "system_prompt"] },
   { id: "rest_api", name: "REST API", desc: "Test any REST API endpoint", fields: ["endpoint", "auth_token"] },
-  { id: "website", name: "Website", desc: "Test website uptime, SSL, content", fields: [] },
+  { id: "website", name: "Website", desc: "Test website uptime, SSL, content", fields: ["website_url"] },
   { id: "http", name: "Custom HTTP", desc: "Test any HTTP endpoint", fields: ["endpoint"] },
 ];
 
