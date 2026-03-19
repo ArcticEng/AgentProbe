@@ -19,6 +19,7 @@ import urllib.parse
 import urllib.request
 import json
 import socket
+from datetime import datetime
 from typing import Optional
 
 
@@ -49,7 +50,6 @@ PAYFAST_PLANS = {
         "item_name": "AgentProbe Pro Monthly",
         "item_description": "2000 test runs per month with real system testing and LLM Judge",
         "subscription_type": "1",
-        "billing_date": "1",
         "recurring_amount": "880.00",
         "frequency": "3",
         "cycles": "0",
@@ -59,12 +59,19 @@ PAYFAST_PLANS = {
         "item_name": "AgentProbe Enterprise Monthly",
         "item_description": "Unlimited runs with certification and priority support",
         "subscription_type": "1",
-        "billing_date": "1",
         "recurring_amount": "9000.00",
         "frequency": "3",
         "cycles": "0",
     },
 }
+
+
+def get_next_billing_date() -> str:
+    """Get the 1st of next month in Y-m-d format (PayFast requirement)."""
+    today = datetime.now()
+    if today.month == 12:
+        return f"{today.year + 1}-01-01"
+    return f"{today.year}-{today.month + 1:02d}-01"
 
 
 def generate_signature(data: dict, passphrase: str = "") -> str:
@@ -73,15 +80,9 @@ def generate_signature(data: dict, passphrase: str = "") -> str:
     CRITICAL: Fields must be in PayFast's required order.
     Empty values must be excluded. Passphrase only appended if non-empty.
     """
-    # Sort keys by PayFast's required field order
     field_priority = {k: i for i, k in enumerate(FIELD_ORDER)}
+    sorted_keys = sorted(data.keys(), key=lambda k: field_priority.get(k, 999))
     
-    sorted_keys = sorted(
-        data.keys(),
-        key=lambda k: field_priority.get(k, 999)
-    )
-    
-    # Build parameter string — skip empty values, skip 'signature'
     parts = []
     for key in sorted_keys:
         val = str(data[key]).strip()
@@ -90,7 +91,6 @@ def generate_signature(data: dict, passphrase: str = "") -> str:
     
     param_string = "&".join(parts)
     
-    # Only append passphrase if it's non-empty
     if passphrase and passphrase.strip():
         param_string += f"&passphrase={urllib.parse.quote_plus(passphrase.strip())}"
     
@@ -104,7 +104,6 @@ def create_payfast_checkout(plan: str, email: str, return_url: str, cancel_url: 
     
     plan_info = PAYFAST_PLANS[plan]
     
-    # Build data dict — PayFast will receive these as form parameters
     data = {
         "merchant_id": PAYFAST_MERCHANT_ID,
         "merchant_key": PAYFAST_MERCHANT_KEY,
@@ -118,17 +117,15 @@ def create_payfast_checkout(plan: str, email: str, return_url: str, cancel_url: 
         "custom_str1": plan,
         "custom_str2": email,
         "subscription_type": plan_info["subscription_type"],
-        "billing_date": plan_info["billing_date"],
+        "billing_date": get_next_billing_date(),
         "recurring_amount": plan_info["recurring_amount"],
         "frequency": plan_info["frequency"],
         "cycles": plan_info["cycles"],
     }
     
-    # Generate signature
     signature = generate_signature(data, PAYFAST_PASSPHRASE)
     data["signature"] = signature
     
-    # Build URL with parameters in the correct order
     field_priority = {k: i for i, k in enumerate(FIELD_ORDER)}
     sorted_keys = sorted(data.keys(), key=lambda k: field_priority.get(k, 998 if k != "signature" else 999))
     
@@ -138,18 +135,14 @@ def create_payfast_checkout(plan: str, email: str, return_url: str, cancel_url: 
         if val:
             query_parts.append(f"{key}={urllib.parse.quote_plus(val)}")
     
-    checkout_url = f"{PAYFAST_URL}?{'&'.join(query_parts)}"
-    return checkout_url
+    return f"{PAYFAST_URL}?{'&'.join(query_parts)}"
 
 
 def verify_itn_signature(post_data: dict) -> bool:
     """Verify ITN callback signature."""
     received_signature = post_data.get("signature", "")
-    
-    # Build a copy without signature for verification
     data_copy = {k: v for k, v in post_data.items() if k != "signature"}
     expected_signature = generate_signature(data_copy, PAYFAST_PASSPHRASE)
-    
     return received_signature == expected_signature
 
 
@@ -157,7 +150,6 @@ def verify_itn_source(request_ip: str) -> bool:
     """Verify ITN came from PayFast servers."""
     if PAYFAST_SANDBOX:
         return True
-    
     valid_hosts = ["www.payfast.co.za", "sandbox.payfast.co.za", "w1w.payfast.co.za", "w2w.payfast.co.za"]
     valid_ips = set()
     for host in valid_hosts:
@@ -166,7 +158,6 @@ def verify_itn_source(request_ip: str) -> bool:
                 valid_ips.add(info[4][0])
         except socket.gaierror:
             pass
-    
     return request_ip in valid_ips
 
 
@@ -177,11 +168,9 @@ def verify_itn_with_payfast(post_data: dict) -> bool:
         for key, value in post_data.items():
             if key != "signature" and value is not None and str(value).strip():
                 params.append(f"{key}={urllib.parse.quote_plus(str(value).strip())}")
-        
         param_string = "&".join(params)
         req = urllib.request.Request(PAYFAST_VALIDATE_URL, data=param_string.encode(),
             headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
-        
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read().decode().strip() == "VALID"
     except Exception as e:
@@ -195,10 +184,8 @@ def handle_itn(post_data: dict, request_ip: str) -> dict:
     
     if not verify_itn_signature(post_data):
         raise ValueError("Invalid ITN signature")
-    
     if not verify_itn_source(request_ip):
         raise ValueError(f"ITN from unauthorized IP: {request_ip}")
-    
     if not verify_itn_with_payfast(post_data):
         raise ValueError("PayFast server validation failed")
     
