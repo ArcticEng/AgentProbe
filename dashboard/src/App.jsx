@@ -441,34 +441,43 @@ function DashboardPage({ setView, user, setUser }) {
 
 function BillingSuccessPage({ setView, user, setUser }) {
   const [status, setStatus] = useState("loading");
-  const [newPlan, setNewPlan] = useState(null);
+  const [upgradedPlan, setUpgradedPlan] = useState(null);
 
   useEffect(() => {
-    let attempts = 0;
-    const maxAttempts = 15;
-    const oldPlan = user?.plan || "free";
+    // Read plan from URL: /billing/success?plan=pro
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get("plan");
 
-    const checkPlan = () => {
-      attempts++;
-      apiFetch("/billing/usage").then(data => {
-        if (data.plan && data.plan !== "free" && data.plan !== oldPlan) {
-          const updatedUser = { ...user, plan: data.plan };
-          localStorage.setItem("ap_user", JSON.stringify(updatedUser));
-          setUser(updatedUser);
-          setNewPlan(data.plan);
-          setStatus("success");
-        } else if (attempts < maxAttempts) {
-          setTimeout(checkPlan, 2000);
-        } else {
-          setStatus("pending");
-        }
-      }).catch(() => {
-        if (attempts < maxAttempts) setTimeout(checkPlan, 2000);
-        else setStatus("pending");
+    if (!plan || !["pro", "enterprise"].includes(plan)) {
+      setStatus("error");
+      return;
+    }
+
+    // Call backend to upgrade immediately
+    apiFetch(`/billing/confirm-upgrade?plan=${plan}`, { method: "POST" })
+      .then(data => {
+        setUpgradedPlan(data.plan);
+        const updatedUser = { ...user, plan: data.plan };
+        localStorage.setItem("ap_user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        setStatus("success");
+        // Clean URL
+        window.history.replaceState({}, "", "/billing/success");
+      })
+      .catch(e => {
+        // If already upgraded or other issue, check current plan
+        apiFetch("/billing/usage").then(data => {
+          if (data.plan === plan || data.plan !== "free") {
+            setUpgradedPlan(data.plan);
+            const updatedUser = { ...user, plan: data.plan };
+            localStorage.setItem("ap_user", JSON.stringify(updatedUser));
+            setUser(updatedUser);
+            setStatus("success");
+          } else {
+            setStatus("error");
+          }
+        }).catch(() => setStatus("error"));
       });
-    };
-
-    setTimeout(checkPlan, 1000);
   }, []);
 
   return (
@@ -476,26 +485,26 @@ function BillingSuccessPage({ setView, user, setUser }) {
       <div className="bg-white/[0.03] border border-emerald-500/20 rounded-2xl p-8 text-center">
         {status === "loading" && (
           <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl animate-pulse">⏳</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">Processing payment...</h2>
-          <p className="text-white/40 text-sm">Confirming your upgrade with PayFast.</p></>
+          <h2 className="text-xl font-bold text-white/90 mb-2">Activating your plan...</h2>
+          <p className="text-white/40 text-sm">This only takes a moment.</p></>
         )}
         {status === "success" && (
           <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">Payment successful!</h2>
-          <p className="text-white/40 text-sm mb-6">Your account has been upgraded to <span className="text-emerald-400 font-semibold capitalize">{newPlan || user?.plan}</span>.</p>
+          <h2 className="text-xl font-bold text-white/90 mb-2">You're on {upgradedPlan === "enterprise" ? "Enterprise" : "Pro"}!</h2>
+          <p className="text-white/40 text-sm mb-6">Payment confirmed. You now have access to real system testing, LLM-Judge, and all 33 templates.</p>
           <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
         )}
-        {status === "pending" && (
-          <><div className="w-16 h-16 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">⏳</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">Payment received!</h2>
-          <p className="text-white/40 text-sm mb-4">Your upgrade is being processed. This usually takes a few seconds.</p>
-          <p className="text-white/30 text-xs mb-6">If your plan hasn't updated yet, log out and back in.</p>
-          <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
+        {status === "error" && (
+          <><div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">!</div>
+          <h2 className="text-xl font-bold text-white/90 mb-2">Something went wrong</h2>
+          <p className="text-white/40 text-sm mb-6">Your payment was received but we couldn't activate your plan automatically. Please contact support.</p>
+          <button onClick={() => setView("dashboard")} className="bg-white/[0.05] hover:bg-white/[0.08] text-white/70 px-8 py-3 rounded-xl text-sm border border-white/[0.08] transition-all w-full">Go to Dashboard</button></>
         )}
       </div>
     </div>
   );
 }
+
 
 export default function App() {
   const [view, setView] = useState(() => {

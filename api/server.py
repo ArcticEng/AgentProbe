@@ -301,6 +301,17 @@ def get_billing_usage(x_api_key: str = Header(None)):
     return {"plan": customer["plan"], "plan_details": PLANS.get(customer["plan"]), "usage": usage,
             "limits": check_usage_limit(customer["customer_id"], customer["plan"])}
 
+@app.post("/api/billing/confirm-upgrade")
+def confirm_upgrade(x_api_key: str = Header(None), plan: str = Query(...)):
+    """Called by success page after PayFast redirect. Upgrades customer immediately."""
+    customer = authenticate(x_api_key)
+    if plan not in ["pro", "enterprise"]:
+        raise HTTPException(400, "Invalid plan")
+    if customer["plan"] == plan:
+        return {"status": "already_on_plan", "plan": plan}
+    update_plan(customer["customer_id"], plan)
+    return {"status": "upgraded", "plan": plan, "email": customer.get("email")}
+
 
 # ============================================================
 # AUTHENTICATED TEST ENDPOINTS

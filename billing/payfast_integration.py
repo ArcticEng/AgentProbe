@@ -107,7 +107,7 @@ def create_payfast_checkout(plan: str, email: str, return_url: str, cancel_url: 
     data = {
         "merchant_id": PAYFAST_MERCHANT_ID,
         "merchant_key": PAYFAST_MERCHANT_KEY,
-        "return_url": return_url,
+        "return_url": f"{return_url}?plan={plan}",
         "cancel_url": cancel_url,
         "notify_url": notify_url,
         "email_address": email,
