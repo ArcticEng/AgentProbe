@@ -276,11 +276,29 @@ function HomePage({ setView }) {
 }
 
 function PricingPage({ setView, user }) {
+  const currentPlan = user?.plan || "none";
+  const planRank = {"none": 0, "free": 1, "pro": 2, "enterprise": 3};
+  const userRank = planRank[currentPlan] || 0;
+
   const plans = [
-    {id:"free",name:"Free",price:0,cta:user?"Current plan":"Get started",features:["25 test runs/month","Mock testing only (demo)","All 33 templates (preview)","Keyword evaluations","1 API key"]},
-    {id:"pro",name:"Pro",price:49,cta:"Upgrade to Pro",popular:true,features:["2,000 test runs/month","Test real AI agents & APIs","LLM-Judge evaluations","5 API keys","Email support","Certification badge"]},
-    {id:"enterprise",name:"Enterprise",price:499,cta:"Contact sales",features:["Unlimited test runs","All 33 templates","LLM-Judge evaluations","20 API keys","Priority support","Enterprise certification","Continuous monitoring","Compliance mapping"]},
+    {id:"free",name:"Free",price:0,features:["25 test runs/month","Mock testing only (demo)","All 33 templates (preview)","Keyword evaluations","1 API key"]},
+    {id:"pro",name:"Pro",price:49,popular:true,features:["2,000 test runs/month","Test real AI agents & APIs","LLM-Judge evaluations","All 33 templates","5 API keys","Certification badge"]},
+    {id:"enterprise",name:"Enterprise",price:499,features:["Unlimited test runs","Test real AI agents & APIs","LLM-Judge evaluations","All 33 templates","20 API keys","Enterprise certification","Continuous monitoring","Compliance mapping"]},
   ];
+
+  const getCta = (p) => {
+    const pRank = planRank[p.id] || 0;
+    if (currentPlan === p.id) return "Current plan";
+    if (pRank < userRank) return "Current: " + currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1);
+    if (!user) return p.id === "free" ? "Get started free" : `Upgrade to ${p.name}`;
+    return `Upgrade to ${p.name}`;
+  };
+
+  const isDisabled = (p) => {
+    const pRank = planRank[p.id] || 0;
+    return pRank <= userRank && userRank > 0;
+  };
+
   const handleUpgrade = async (planId) => {
     if (planId === "free") return setView("signup");
     if (!user) return setView("signup");
@@ -290,7 +308,21 @@ function PricingPage({ setView, user }) {
     <div className="max-w-5xl mx-auto px-6 py-16">
       <div className="text-center mb-12"><h1 className="text-4xl font-bold text-white/90 mb-3">Simple, transparent pricing</h1><p className="text-white/35">Start free. Upgrade when you need LLM-Judge or more runs.</p></div>
       <div className="grid grid-cols-3 gap-4">
-        {plans.map(p => (<div key={p.id} className={`relative p-6 rounded-2xl border transition-all ${p.popular ? "bg-emerald-500/[0.04] border-emerald-500/30 scale-[1.02]" : "bg-white/[0.02] border-white/[0.06]"}`}>{p.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-bold rounded-full">MOST POPULAR</div>}<h3 className="text-lg font-semibold text-white/90 mb-1">{p.name}</h3><div className="flex items-baseline gap-1 mb-4"><span className="text-3xl font-bold text-white/90">${p.price}</span>{p.price > 0 && <span className="text-white/30 text-sm">/month</span>}</div><ul className="space-y-2 mb-6">{p.features.map((f,i) => (<li key={i} className="flex items-center gap-2 text-xs text-white/50"><span className="text-emerald-400">✓</span> {f}</li>))}</ul><button onClick={() => handleUpgrade(p.id)} className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${p.popular ? "bg-emerald-500 hover:bg-emerald-400 text-black" : "bg-white/[0.05] hover:bg-white/[0.08] text-white/70 border border-white/[0.08]"}`}>{p.cta}</button></div>))}
+        {plans.map(p => {
+          const disabled = isDisabled(p);
+          const isCurrent = currentPlan === p.id;
+          return (<div key={p.id} className={`relative p-6 rounded-2xl border transition-all ${isCurrent ? "bg-emerald-500/[0.06] border-emerald-500/40 ring-1 ring-emerald-500/20" : p.popular && !disabled ? "bg-emerald-500/[0.04] border-emerald-500/30 scale-[1.02]" : "bg-white/[0.02] border-white/[0.06]"}`}>
+            {isCurrent && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-bold rounded-full">YOUR PLAN</div>}
+            {p.popular && !isCurrent && <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-bold rounded-full">MOST POPULAR</div>}
+            <h3 className="text-lg font-semibold text-white/90 mb-1">{p.name}</h3>
+            <div className="flex items-baseline gap-1 mb-4"><span className="text-3xl font-bold text-white/90">${p.price}</span>{p.price > 0 && <span className="text-white/30 text-sm">/month</span>}</div>
+            <ul className="space-y-2 mb-6">{p.features.map((f,i) => (<li key={i} className="flex items-center gap-2 text-xs text-white/50"><span className="text-emerald-400">✓</span> {f}</li>))}</ul>
+            <button onClick={() => !disabled && handleUpgrade(p.id)} disabled={disabled}
+              className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${disabled ? "bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05]" : p.popular || (!disabled && p.id === "enterprise") ? "bg-emerald-500 hover:bg-emerald-400 text-black" : "bg-white/[0.05] hover:bg-white/[0.08] text-white/70 border border-white/[0.08]"}`}>
+              {getCta(p)}
+            </button>
+          </div>);
+        })}
       </div>
     </div>
   );
