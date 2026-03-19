@@ -9,17 +9,29 @@ primary_region = "jnb"
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 1
+  concurrency_type = "requests"
+  concurrency_hard_limit = 250
+  concurrency_soft_limit = 200
 
 [mounts]
   source = "agentprobe_data"
   destination = "/data"
 
 [[vm]]
-  memory = "512mb"
+  memory = "1gb"
   cpu_kind = "shared"
-  cpus = 1
+  cpus = 2
 
 [env]
   AGENTPROBE_DB = "/data/agentprobe.db"
   CERT_DB = "/data/certifications.db"
-  DOMAIN = "https://agentprobe.vercel.app"
+  DOMAIN = "https://agent-probe-eight.vercel.app"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8000
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
