@@ -441,25 +441,34 @@ function DashboardPage({ setView, user, setUser }) {
 
 function BillingSuccessPage({ setView, user, setUser }) {
   const [status, setStatus] = useState("loading");
+  const [newPlan, setNewPlan] = useState(null);
 
   useEffect(() => {
-    // Refresh plan from API after PayFast redirect
-    apiFetch("/billing/usage").then(data => {
-      const updatedUser = { ...user, plan: data.plan };
-      localStorage.setItem("ap_user", JSON.stringify(updatedUser));
-      setUser(updatedUser);
-      setStatus("success");
-    }).catch(() => {
-      // ITN may not have arrived yet — retry after 3s
-      setTimeout(() => {
-        apiFetch("/billing/usage").then(data => {
+    let attempts = 0;
+    const maxAttempts = 15;
+    const oldPlan = user?.plan || "free";
+
+    const checkPlan = () => {
+      attempts++;
+      apiFetch("/billing/usage").then(data => {
+        if (data.plan && data.plan !== "free" && data.plan !== oldPlan) {
           const updatedUser = { ...user, plan: data.plan };
           localStorage.setItem("ap_user", JSON.stringify(updatedUser));
           setUser(updatedUser);
+          setNewPlan(data.plan);
           setStatus("success");
-        }).catch(() => setStatus("pending"));
-      }, 3000);
-    });
+        } else if (attempts < maxAttempts) {
+          setTimeout(checkPlan, 2000);
+        } else {
+          setStatus("pending");
+        }
+      }).catch(() => {
+        if (attempts < maxAttempts) setTimeout(checkPlan, 2000);
+        else setStatus("pending");
+      });
+    };
+
+    setTimeout(checkPlan, 1000);
   }, []);
 
   return (
@@ -473,7 +482,7 @@ function BillingSuccessPage({ setView, user, setUser }) {
         {status === "success" && (
           <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
           <h2 className="text-xl font-bold text-white/90 mb-2">Payment successful!</h2>
-          <p className="text-white/40 text-sm mb-6">Your account has been upgraded to <span className="text-emerald-400 font-semibold capitalize">{user?.plan}</span>.</p>
+          <p className="text-white/40 text-sm mb-6">Your account has been upgraded to <span className="text-emerald-400 font-semibold capitalize">{newPlan || user?.plan}</span>.</p>
           <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
         )}
         {status === "pending" && (
