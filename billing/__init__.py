@@ -77,6 +77,34 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_usage_customer_month ON usage_records(customer_id, month);
         CREATE INDEX IF NOT EXISTS idx_test_runs_customer ON test_runs(customer_id);
         CREATE INDEX IF NOT EXISTS idx_test_run_log_customer ON test_run_log(customer_id);
+
+        CREATE TABLE IF NOT EXISTS schedules (
+            id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            agent_config TEXT NOT NULL DEFAULT '{"type":"mock"}',
+            frequency TEXT NOT NULL DEFAULT 'daily',
+            webhook_url TEXT,
+            email_on_fail INTEGER DEFAULT 1,
+            last_run_at TEXT,
+            next_run_at TEXT,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_tests (
+            id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            tests_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_schedules_customer ON schedules(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_schedules_next_run ON schedules(next_run_at);
+        CREATE INDEX IF NOT EXISTS idx_custom_tests_customer ON custom_tests(customer_id);
     """)
     conn.commit()
 
@@ -288,3 +316,91 @@ def get_customer_by_stripe_id(stripe_customer_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM customers WHERE stripe_customer_id = ?", (stripe_customer_id,)).fetchone()
     return dict(row) if row else None
+
+
+# ============================================================
+# SCHEDULED TESTING
+# ============================================================
+
+def create_schedule(customer_id, template_id, agent_config, frequency="daily", webhook_url=None):
+    from datetime import timedelta
+    schedule_id = "sched_" + secrets.token_urlsafe(8)
+    now = datetime.now(timezone.utc)
+    freq_hours = {"hourly": 1, "daily": 24, "weekly": 168}
+    next_run = now + timedelta(hours=freq_hours.get(frequency, 24))
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO schedules (id, customer_id, template_id, agent_config, frequency, webhook_url, next_run_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (schedule_id, customer_id, template_id, json.dumps(agent_config), frequency, webhook_url, next_run.isoformat()))
+    conn.commit()
+    return schedule_id
+
+def list_schedules(customer_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM schedules WHERE customer_id = ? ORDER BY created_at DESC", (customer_id,)).fetchall()
+    return [dict(r) for r in rows]
+
+def delete_schedule(schedule_id, customer_id):
+    conn = get_db()
+    conn.execute("DELETE FROM schedules WHERE id = ? AND customer_id = ?", (schedule_id, customer_id))
+    conn.commit()
+
+def get_due_schedules():
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT s.*, c.email, c.plan FROM schedules s JOIN customers c ON s.customer_id = c.id "
+        "WHERE s.enabled = 1 AND s.next_run_at <= ? AND c.status = 'active'", (now,)).fetchall()
+    return [dict(r) for r in rows]
+
+def update_schedule_last_run(schedule_id, frequency):
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    freq_hours = {"hourly": 1, "daily": 24, "weekly": 168}
+    next_run = now + timedelta(hours=freq_hours.get(frequency, 24))
+    conn = get_db()
+    conn.execute("UPDATE schedules SET last_run_at = ?, next_run_at = ? WHERE id = ?",
+        (now.isoformat(), next_run.isoformat(), schedule_id))
+    conn.commit()
+
+
+# ============================================================
+# CUSTOM TESTS
+# ============================================================
+
+def save_custom_test(customer_id, test_id, name, description, tests_json):
+    conn = get_db()
+    conn.execute(
+        "INSERT OR REPLACE INTO custom_tests (id, customer_id, name, description, tests_json, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, datetime('now'))",
+        (test_id, customer_id, name, description, json.dumps(tests_json)))
+    conn.commit()
+
+def list_custom_tests(customer_id):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM custom_tests WHERE customer_id = ? ORDER BY updated_at DESC", (customer_id,)).fetchall()
+    results = []
+    for r in rows:
+        d = dict(r)
+        d["tests"] = json.loads(d["tests_json"])
+        results.append(d)
+    return results
+
+def delete_custom_test(test_id, customer_id):
+    conn = get_db()
+    conn.execute("DELETE FROM custom_tests WHERE id = ? AND customer_id = ?", (test_id, customer_id))
+    conn.commit()
+
+
+# ============================================================
+# HISTORICAL TRENDS
+# ============================================================
+
+def get_run_history(customer_id, days=30):
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT suite_name, total_tests, passed, failed, latency_ms, created_at "
+        "FROM test_run_log WHERE customer_id = ? AND created_at >= datetime('now', ?) "
+        "ORDER BY created_at ASC",
+        (customer_id, "-{} days".format(days))).fetchall()
+    return [dict(r) for r in rows]

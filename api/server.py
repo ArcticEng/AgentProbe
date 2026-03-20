@@ -23,7 +23,9 @@ from agentprobe.system_templates import SystemTemplates
 from agentprobe.adapters import RESTAPIAdapter, WebsiteAdapter, GraphQLAdapter, WebhookTestAdapter
 from billing import (init_db, verify_api_key, track_usage, check_usage_limit,
     log_test_run, get_usage, create_customer, get_db, get_current_month, update_plan, PLANS,
-    save_test_run, get_test_run, list_test_runs)
+    save_test_run, get_test_run, list_test_runs,
+    create_schedule, list_schedules, delete_schedule, get_run_history,
+    save_custom_test, list_custom_tests, delete_custom_test)
 
 try:
     from billing.stripe_integration import (create_checkout_session, handle_webhook, HAS_STRIPE)
@@ -147,6 +149,12 @@ class SignupRequest(BaseModel):
 
 class CheckoutRequest(BaseModel):
     plan: str; email: str
+
+class ScheduleRequest(BaseModel):
+    template_id: str; agent: AgentConfig = AgentConfig(); frequency: str = "daily"; webhook_url: Optional[str] = None
+
+class CustomTestRequest(BaseModel):
+    name: str; description: str = ""; tests: list
 
 
 SYSTEM_TEMPLATE_IDS = {t["id"] for t in SystemTemplates.list_all()}
@@ -407,6 +415,77 @@ def get_run(run_id: str, x_api_key: str = Header(None)):
     if not run: raise HTTPException(404, "Run not found")
     return run
 
+
+# ============================================================
+# SCHEDULED TESTING (Pro+ only)
+# ============================================================
+
+@app.post("/api/schedules")
+def create_test_schedule(request: ScheduleRequest, x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    if not PLANS.get(customer["plan"], {}).get("real_systems"):
+        raise HTTPException(403, "Scheduled testing requires Pro+")
+    sched_id = create_schedule(customer["customer_id"], request.template_id,
+        request.agent.dict(), request.frequency, request.webhook_url)
+    return {"id": sched_id, "status": "created", "frequency": request.frequency}
+
+@app.get("/api/schedules")
+def get_schedules(x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    return {"schedules": list_schedules(customer["customer_id"])}
+
+@app.delete("/api/schedules/{schedule_id}")
+def remove_schedule(schedule_id: str, x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    delete_schedule(schedule_id, customer["customer_id"])
+    return {"status": "deleted"}
+
+# ============================================================
+# CUSTOM TESTS
+# ============================================================
+
+@app.post("/api/custom-tests")
+def create_custom_test_endpoint(request: CustomTestRequest, x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    import uuid as _uuid
+    test_id = "ct_" + _uuid.uuid4().hex[:8]
+    save_custom_test(customer["customer_id"], test_id, request.name, request.description, request.tests)
+    return {"id": test_id, "status": "created"}
+
+@app.get("/api/custom-tests")
+def get_custom_tests_endpoint(x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    return {"tests": list_custom_tests(customer["customer_id"])}
+
+@app.delete("/api/custom-tests/{test_id}")
+def remove_custom_test_endpoint(test_id: str, x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    delete_custom_test(test_id, customer["customer_id"])
+    return {"status": "deleted"}
+
+# ============================================================
+# HISTORICAL TRENDS
+# ============================================================
+
+@app.get("/api/history")
+def get_history(days: int = Query(30), x_api_key: str = Header(None)):
+    customer = authenticate(x_api_key)
+    history = get_run_history(customer["customer_id"], days=min(days, 90))
+    daily = {}
+    for r in history:
+        day = r["created_at"][:10] if r.get("created_at") else "unknown"
+        if day not in daily:
+            daily[day] = {"date": day, "runs": 0, "tests": 0, "passed": 0, "failed": 0, "avg_latency": 0}
+        daily[day]["runs"] += 1
+        daily[day]["tests"] += r.get("total_tests") or 0
+        daily[day]["passed"] += r.get("passed") or 0
+        daily[day]["failed"] += r.get("failed") or 0
+        daily[day]["avg_latency"] += r.get("latency_ms") or 0
+    for d in daily.values():
+        if d["runs"] > 0:
+            d["avg_latency"] = round(d["avg_latency"] / d["runs"], 1)
+            d["pass_rate"] = round(d["passed"] / d["tests"], 3) if d["tests"] > 0 else 0
+    return {"history": sorted(daily.values(), key=lambda x: x["date"]), "days": len(daily)}
 
 # ============================================================
 # ADMIN ENDPOINTS

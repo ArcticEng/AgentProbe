@@ -1,17 +1,36 @@
 [project]
 name = "agentprobe"
-version = "0.1.0"
-description = "The Selenium/Cypress for AI Agents — automated testing and evaluation"
+version = "0.2.0"
+description = "The Selenium/Cypress for AI Agents — automated testing, evaluation, and certification"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["ai", "testing", "agents", "evaluation", "llm"]
+keywords = ["ai", "testing", "agents", "evaluation", "llm", "safety", "hallucination", "jailbreak"]
+authors = [{name = "AgentProbe", email = "hello@agentprobe.dev"}]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Testing",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
 dependencies = []
 
 [project.optional-dependencies]
-api = ["fastapi>=0.100", "uvicorn>=0.20"]
+anthropic = ["anthropic>=0.20"]
+openai = ["openai>=1.0"]
+all = ["anthropic>=0.20", "openai>=1.0"]
+api = ["fastapi>=0.100", "uvicorn>=0.20", "stripe", "python-multipart"]
 dev = ["pytest", "pytest-asyncio", "httpx"]
+
+[project.urls]
+Homepage = "https://agent-probe-eight.vercel.app"
+Documentation = "https://agent-probe-eight.vercel.app/docs"
+Repository = "https://github.com/ArcticEng/AgentProbe"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agentprobe*"]

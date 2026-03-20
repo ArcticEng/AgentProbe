@@ -380,8 +380,22 @@ function DocsPage() {
 function DashboardPage({ setView, user, setUser }) {
   const [templates, setTemplates] = useState([]); const [runs, setRuns] = useState([]); const [currentRun, setCurrentRun] = useState(null); const [loading, setLoading] = useState(false); const [usage, setUsage] = useState(null); const [selectedTest, setSelectedTest] = useState(null);
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("ap_onboarded"));
+  const [activeTab, setActiveTab] = useState("templates");
 
-  useEffect(() => { apiFetch("/templates").then(d => setTemplates(d.templates || [])).catch(() => {}); apiFetch("/billing/usage").then(setUsage).catch(() => {}); }, []);
+  useEffect(() => {
+    apiFetch("/templates").then(d => setTemplates(d.templates || [])).catch(() => {});
+    apiFetch("/billing/usage").then(data => {
+      setUsage(data);
+      if (data.plan && user) {
+        const updated = { ...user, plan: data.plan };
+        localStorage.setItem("ap_user", JSON.stringify(updated));
+        if (user.plan !== data.plan) setUser(updated);
+      }
+    }).catch(() => {});
+    apiFetch("/history?days=30").then(d => setHistory(d.history || [])).catch(() => {});
+  }, []);
 
   const runTemplate = async (id, agent) => {
     setLoading(true); setPreviewTemplate(null);
@@ -407,6 +421,97 @@ function DashboardPage({ setView, user, setUser }) {
       <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} onRun={runTemplate} loading={loading} userPlan={user?.plan} />
 
       <div className="flex items-center justify-between mb-8"><h1 className="text-2xl font-bold text-white/90">Dashboard</h1><div className="flex items-center gap-3">{usage && (<div className="text-xs text-white/30 bg-white/[0.03] px-3 py-1.5 rounded-lg border border-white/[0.06]">{usage.usage?.test_runs||0} / {usage.limits?.limit==="unlimited"?"∞":usage.limits?.limit} runs · <span className="capitalize">{usage.plan}</span> plan</div>)}<button onClick={() => setView("pricing")} className="text-xs text-emerald-400/60 hover:text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-all">Upgrade</button><button onClick={logout} className="text-xs text-white/30 hover:text-white/60 px-3 py-1.5 transition-all">Log out</button></div></div>
+      {/* Onboarding */}
+      {showOnboarding && (
+        <div className="mb-6 p-5 bg-gradient-to-r from-emerald-500/[0.06] to-cyan-500/[0.06] border border-emerald-500/20 rounded-2xl">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-sm font-bold text-emerald-400 mb-2">Welcome to AgentProbe!</h2>
+              <div className="space-y-2 text-xs text-white/50">
+                <p>1. <strong className="text-white/70">Pick a template below</strong> to see how testing works</p>
+                <p>2. <strong className="text-white/70">Click View details</strong> to see what tests run and configure your system</p>
+                <p>3. <strong className="text-white/70">Run the tests</strong> — mock mode is free, real systems need Pro</p>
+              </div>
+            </div>
+            <button onClick={() => { setShowOnboarding(false); localStorage.setItem("ap_onboarded", "1"); }} className="text-white/20 hover:text-white/50 text-lg">&times;</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Navigation */}
+      <div className="flex gap-1 mb-6 bg-white/[0.02] rounded-xl p-1 border border-white/[0.05]">
+        {[{id:"templates",label:"Templates",icon:"\ud83d\udccb"},{id:"history",label:"History",icon:"\ud83d\udcca"},{id:"custom",label:"Custom Tests",icon:"\ud83d\udd27"}].map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all ${activeTab === tab.id ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "text-white/30 hover:text-white/50"}`}>{tab.icon} {tab.label}</button>
+        ))}
+      </div>
+
+      {/* History Tab */}
+      {activeTab === "history" && (
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Test History — Last 30 Days</h2>
+          {history.length === 0 ? (
+            <div className="text-center py-12 text-white/20 text-sm">No test runs yet. Run a template to see trends here.</div>
+          ) : (
+            <div>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <MetricCard label="Total Runs" value={history.reduce((a,h) => a+h.runs, 0)} />
+                <MetricCard label="Tests Executed" value={history.reduce((a,h) => a+h.tests, 0)} />
+                <MetricCard label="Avg Pass Rate" value={`${(history.reduce((a,h) => a+(h.pass_rate||0), 0) / history.length * 100).toFixed(0)}%`} accent="text-emerald-400" />
+                <MetricCard label="Avg Latency" value={`${(history.reduce((a,h) => a+(h.avg_latency||0), 0) / history.length).toFixed(0)}ms`} />
+              </div>
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+                <div className="flex items-end gap-1" style={{height:"120px"}}>
+                  {history.map((h,i) => {
+                    const barH = Math.max(4, (h.pass_rate||0) * 110);
+                    const color = (h.pass_rate||0) >= 0.8 ? "#10b981" : (h.pass_rate||0) >= 0.6 ? "#f59e0b" : "#ef4444";
+                    return <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                      <div className="absolute -top-6 bg-black/80 text-[9px] text-white/60 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">{h.date}: {((h.pass_rate||0)*100).toFixed(0)}%</div>
+                      <div style={{height:`${barH}px`, backgroundColor:color}} className="w-full rounded-t opacity-70 hover:opacity-100 transition-opacity min-w-[4px]" />
+                    </div>;
+                  })}
+                </div>
+                <div className="flex justify-between text-[9px] text-white/15 mt-2">
+                  <span>{history[0]?.date}</span><span>{history[history.length-1]?.date}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Custom Tests Tab */}
+      {activeTab === "custom" && (
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Build Custom Tests</h2>
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-6">
+            <p className="text-xs text-white/40 mb-4">Create test suites specific to your product. Define inputs and expected outputs.</p>
+            <div className="space-y-3" id="custom-test-builder">
+              <div className="grid grid-cols-2 gap-2">
+                <input id="ct-name" placeholder="Test suite name" className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
+                <input id="ct-input" placeholder="Input message or API call" className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
+                <input id="ct-contains" placeholder="Should contain..." className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
+                <input id="ct-not" placeholder="Should NOT contain..." className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
+              </div>
+              <button onClick={() => {
+                const name = document.getElementById("ct-name")?.value;
+                const input = document.getElementById("ct-input")?.value;
+                const contains = document.getElementById("ct-contains")?.value;
+                const notContains = document.getElementById("ct-not")?.value;
+                if (!name || !input) return alert("Name and input required");
+                const evals = [];
+                if (contains) evals.push({type:"contains",params:{phrases:[contains]}});
+                if (notContains) evals.push({type:"not_contains",params:{phrases:[notContains]}});
+                apiFetch("/custom-tests", {method:"POST", body:JSON.stringify({name, tests:[{name:"Test 1",input,evals}]})})
+                  .then(() => alert("Saved!")).catch(e => alert(e.detail?.message || "Failed"));
+              }} className="text-xs bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-4 py-2 rounded-lg">Save custom test</button>
+            </div>
+            <p className="text-[10px] text-white/15 mt-3">Pro tip: Use the API to create complex test suites with multiple tests and evaluators.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Templates Tab */}
+      {activeTab === "templates" && (<>
       {runs.length > 0 && (<div className="grid grid-cols-4 gap-3 mb-8"><MetricCard label="Total runs" value={runs.length}/><MetricCard label="Tests" value={runs.reduce((a,r)=>a+r.total,0)}/><MetricCard label="Avg pass rate" value={`${(runs.reduce((a,r)=>a+r.pass_rate,0)/runs.length*100).toFixed(0)}%`} accent="text-emerald-400"/><MetricCard label="Avg score" value={`${(runs.reduce((a,r)=>a+r.avg_score,0)/runs.length*100).toFixed(0)}%`} accent="text-cyan-400"/></div>)}
 
       {(() => {

@@ -1,0 +1,50 @@
+{
+  "timestamp": 1773911793.05648,
+  "results": [
+    {
+      "name": "API Health",
+      "passed": 6,
+      "total": 6,
+      "score": 0.9821463569446847,
+      "pass_rate": 1.0
+    },
+    {
+      "name": "Auth",
+      "passed": 7,
+      "total": 7,
+      "score": 0.9773529853139605,
+      "pass_rate": 1.0
+    },
+    {
+      "name": "Security",
+      "passed": 5,
+      "total": 5,
+      "score": 0.9946856880187989,
+      "pass_rate": 1.0
+    },
+    {
+      "name": "Error Handling",
+      "passed": 6,
+      "total": 6,
+      "score": 0.9742142491870457,
+      "pass_rate": 1.0
+    },
+    {
+      "name": "Website Uptime",
+      "passed": 3,
+      "total": 3,
+      "score": 0.976868764559428,
+      "pass_rate": 1.0
+    },
+    {
+      "name": "Performance",
+      "passed": 10,
+      "total": 10,
+      "score": 0.9715042650699616,
+      "pass_rate": 1.0
+    }
+  ],
+  "total_passed": 37,
+  "total_tests": 37,
+  "overall_score": 0.9794620515156466
+}
