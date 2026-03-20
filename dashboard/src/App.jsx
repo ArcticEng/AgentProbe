@@ -69,7 +69,6 @@ function MetricCard({ label, value, sub, accent }) {
   );
 }
 
-// Template descriptions and test details for preview
 const TEMPLATE_INFO = {
   customer_service: { desc: "Tests greeting handling, refund requests, angry customer de-escalation, jailbreak resistance, PII protection, out-of-scope redirection, multilingual support", tests: ["Handles greeting","Handles refund","Handles angry customer","Resists jailbreak","Protects PII","Handles out-of-scope","Structured response","Handles multilingual","Handles follow-up","Handles cancellation"], bestFor: "Customer support chatbots" },
   sales_agent: { desc: "Tests lead qualification, pricing questions, competitor comparison, objection handling, anti-manipulation", tests: ["Qualifies lead","Handles pricing","Handles competitor comparison","Doesn't overpromise","Handles objection","Resists manipulation"], bestFor: "Sales and lead-gen bots" },
@@ -106,7 +105,6 @@ const TEMPLATE_INFO = {
   auth_flow: { desc: "Tests signup, login, protected route access, invalid login, password validation", tests: ["Signup","Login","Access protected route without token","Invalid login","Password validation"], bestFor: "Auth systems" },
 };
 
-// Agent type configurations
 const AGENT_TYPES = [
   { id: "mock", name: "Mock Agent (Demo)", desc: "Built-in test responses — no external system needed", fields: [] },
   { id: "anthropic", name: "Anthropic (Claude)", desc: "Test a Claude-powered AI agent", fields: ["api_key", "model", "system_prompt"] },
@@ -123,10 +121,8 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
   const [model, setModel] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [authToken, setAuthToken] = useState("");
-
   const info = TEMPLATE_INFO[template?.id] || { desc: "Run this test suite against your system.", tests: [], bestFor: "General" };
   const agentConfig = AGENT_TYPES.find(a => a.id === agentType);
-  const isFree = !userPlan || userPlan === "free";
   const handleRun = () => {
     const agent = { type: agentType };
     if (endpoint) agent.endpoint = endpoint;
@@ -136,13 +132,10 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
     if (authToken) agent.auth_token = authToken;
     onRun(template.id, agent);
   };
-
   if (!template) return null;
-
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[#0c0c14] border border-white/10 rounded-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        {/* Header */}
         <div className="p-6 border-b border-white/[0.06]">
           <div className="flex justify-between items-start">
             <div>
@@ -158,8 +151,6 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
           <p className="text-xs text-white/40 mt-3 leading-relaxed">{info.desc}</p>
           <div className="text-[10px] text-white/25 mt-2">Best for: <span className="text-white/40">{info.bestFor}</span></div>
         </div>
-
-        {/* Tests included */}
         <div className="p-6 border-b border-white/[0.06]">
           <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Tests included</h3>
           <div className="grid grid-cols-2 gap-1.5">
@@ -170,11 +161,8 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
             ))}
           </div>
         </div>
-
-        {/* Agent configuration */}
         <div className="p-6 border-b border-white/[0.06]">
           <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Connect your system</h3>
-
           <div className="grid grid-cols-3 gap-2 mb-4">
             {AGENT_TYPES.map(a => (
               <button key={a.id} onClick={() => setAgentType(a.id)}
@@ -184,73 +172,16 @@ function TemplatePreviewModal({ template, onClose, onRun, loading, userPlan }) {
               </button>
             ))}
           </div>
-
-          {agentConfig?.fields.includes("endpoint") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">API Endpoint</label>
-              <input type="text" value={endpoint} onChange={e => setEndpoint(e.target.value)}
-                placeholder="https://api.yoursite.com"
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
-            </div>
-          )}
-
-          {agentConfig?.fields.includes("api_key") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">{agentType === "anthropic" ? "Anthropic" : "OpenAI"} API Key</label>
-              <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-                placeholder={agentType === "anthropic" ? "sk-ant-..." : "sk-..."}
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
-            </div>
-          )}
-
-          {agentConfig?.fields.includes("model") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">Model</label>
-              <input type="text" value={model} onChange={e => setModel(e.target.value)}
-                placeholder={agentType === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"}
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
-            </div>
-          )}
-
-          {agentConfig?.fields.includes("system_prompt") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">System Prompt (what your agent does)</label>
-              <textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)}
-                placeholder="You are a customer service agent for..."
-                rows={3}
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none resize-none" />
-            </div>
-          )}
-
-          {agentConfig?.fields.includes("auth_token") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">Auth Token (optional)</label>
-              <input type="password" value={authToken} onChange={e => setAuthToken(e.target.value)}
-                placeholder="Bearer token for authenticated endpoints"
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
-            </div>
-          )}
-
-          {agentConfig?.fields.includes("website_url") && (
-            <div className="mb-3">
-              <label className="text-[10px] text-white/30 mb-1 block">Website URL to test</label>
-              <input type="text" value={endpoint} onChange={e => setEndpoint(e.target.value)}
-                placeholder="https://yoursite.com"
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" />
-              <div className="text-[9px] text-white/15 mt-1">Tests uptime, SSL certificate, response time, and content</div>
-            </div>
-          )}
+          {agentConfig?.fields.includes("endpoint") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">API Endpoint</label><input type="text" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://api.yoursite.com" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" /></div>)}
+          {agentConfig?.fields.includes("api_key") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">{agentType === "anthropic" ? "Anthropic" : "OpenAI"} API Key</label><input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={agentType === "anthropic" ? "sk-ant-..." : "sk-..."} className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" /></div>)}
+          {agentConfig?.fields.includes("model") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">Model</label><input type="text" value={model} onChange={e => setModel(e.target.value)} placeholder={agentType === "anthropic" ? "claude-haiku-4-5-20251001" : "gpt-4o-mini"} className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" /></div>)}
+          {agentConfig?.fields.includes("system_prompt") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">System Prompt (what your agent does)</label><textarea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} placeholder="You are a customer service agent for..." rows={3} className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none resize-none" /></div>)}
+          {agentConfig?.fields.includes("auth_token") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">Auth Token (optional)</label><input type="password" value={authToken} onChange={e => setAuthToken(e.target.value)} placeholder="Bearer token for authenticated endpoints" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" /></div>)}
+          {agentConfig?.fields.includes("website_url") && (<div className="mb-3"><label className="text-[10px] text-white/30 mb-1 block">Website URL to test</label><input type="text" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://yoursite.com" className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 placeholder-white/20 focus:border-emerald-500/40 focus:outline-none font-mono" /><div className="text-[9px] text-white/15 mt-1">Tests uptime, SSL certificate, response time, and content</div></div>)}
         </div>
-
-        {/* Run button */}
         <div className="p-6">
-          <button onClick={handleRun} disabled={loading}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-semibold py-3 rounded-xl text-sm transition-all">
-            {loading ? "Running tests..." : `Run ${template.tests} tests →`}
-          </button>
-          <p className="text-[10px] text-white/20 text-center mt-2">
-            {agentType === "mock" ? "Running against built-in mock responses" : `Running against your ${agentConfig?.name}`}
-          </p>
+          <button onClick={handleRun} disabled={loading} className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-black font-semibold py-3 rounded-xl text-sm transition-all">{loading ? "Running tests..." : `Run ${template.tests} tests →`}</button>
+          <p className="text-[10px] text-white/20 text-center mt-2">{agentType === "mock" ? "Running against built-in mock responses" : `Running against your ${agentConfig?.name}`}</p>
         </div>
       </div>
     </div>
@@ -274,7 +205,7 @@ function HomePage({ setView }) {
       </div>
       <div className="mb-20 p-8 bg-gradient-to-r from-emerald-500/[0.04] to-cyan-500/[0.04] border border-white/[0.06] rounded-2xl">
         <h2 className="text-sm font-semibold text-white/60 mb-4">3 lines to test your agent</h2>
-        <pre className="text-sm font-mono text-emerald-300/70 bg-black/30 rounded-xl p-6 overflow-x-auto leading-relaxed">{`from agentprobe import AgentProbe, Templates\n\nprobe = AgentProbe(api_key="ap_live_...", provider="anthropic")\nresults = probe.run(Templates.safety_suite())\nresults.summary()`}</pre>
+        <pre className="text-sm font-mono text-emerald-300/70 bg-black/30 rounded-xl p-6 overflow-x-auto leading-relaxed">{`pip install git+https://github.com/ArcticEng/AgentProbe.git\n\nfrom agentprobe import AgentProbe, Templates\nprobe = AgentProbe(api_key="ap_live_...", provider="anthropic")\nresults = probe.run(Templates.safety_suite())\nresults.summary()`}</pre>
       </div>
       <div className="text-center pb-20">
         <h2 className="text-2xl font-bold text-white/80 mb-3">Ready to ship safe AI?</h2>
@@ -289,13 +220,11 @@ function PricingPage({ setView, user }) {
   const currentPlan = user?.plan || "none";
   const planRank = {"none": 0, "free": 1, "pro": 2, "enterprise": 3};
   const userRank = planRank[currentPlan] || 0;
-
   const plans = [
     {id:"free",name:"Free",price:0,features:["25 test runs/month","Mock testing only (demo)","All 33 templates (preview)","Keyword evaluations","1 API key"]},
     {id:"pro",name:"Pro",price:49,popular:true,features:["2,000 test runs/month","Test real AI agents & APIs","LLM-Judge evaluations","All 33 templates","5 API keys","Certification badge"]},
     {id:"enterprise",name:"Enterprise",price:499,features:["Unlimited test runs","Test real AI agents & APIs","LLM-Judge evaluations","All 33 templates","20 API keys","Enterprise certification","Continuous monitoring","Compliance mapping"]},
   ];
-
   const getCta = (p) => {
     const pRank = planRank[p.id] || 0;
     if (currentPlan === p.id) return "Current plan";
@@ -303,12 +232,7 @@ function PricingPage({ setView, user }) {
     if (!user) return p.id === "free" ? "Get started free" : `Upgrade to ${p.name}`;
     return `Upgrade to ${p.name}`;
   };
-
-  const isDisabled = (p) => {
-    const pRank = planRank[p.id] || 0;
-    return pRank <= userRank && userRank > 0;
-  };
-
+  const isDisabled = (p) => { const pRank = planRank[p.id] || 0; return pRank <= userRank && userRank > 0; };
   const handleUpgrade = async (planId) => {
     if (planId === "free") return setView("signup");
     if (!user) return setView("signup");
@@ -327,10 +251,7 @@ function PricingPage({ setView, user }) {
             <h3 className="text-lg font-semibold text-white/90 mb-1">{p.name}</h3>
             <div className="flex items-baseline gap-1 mb-4"><span className="text-3xl font-bold text-white/90">${p.price}</span>{p.price > 0 && <span className="text-white/30 text-sm">/month</span>}</div>
             <ul className="space-y-2 mb-6">{p.features.map((f,i) => (<li key={i} className="flex items-center gap-2 text-xs text-white/50"><span className="text-emerald-400">✓</span> {f}</li>))}</ul>
-            <button onClick={() => !disabled && handleUpgrade(p.id)} disabled={disabled}
-              className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${disabled ? "bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05]" : p.popular || (!disabled && p.id === "enterprise") ? "bg-emerald-500 hover:bg-emerald-400 text-black" : "bg-white/[0.05] hover:bg-white/[0.08] text-white/70 border border-white/[0.08]"}`}>
-              {getCta(p)}
-            </button>
+            <button onClick={() => !disabled && handleUpgrade(p.id)} disabled={disabled} className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all ${disabled ? "bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05]" : p.popular || (!disabled && p.id === "enterprise") ? "bg-emerald-500 hover:bg-emerald-400 text-black" : "bg-white/[0.05] hover:bg-white/[0.08] text-white/70 border border-white/[0.08]"}`}>{getCta(p)}</button>
           </div>);
         })}
       </div>
@@ -362,7 +283,7 @@ function DocsPage() {
     <div className="max-w-3xl mx-auto px-6 py-16">
       <h1 className="text-3xl font-bold text-white/90 mb-8">Documentation</h1>
       {[
-        {title:"Quick Start",code:`pip install agentprobe\n\nfrom agentprobe import AgentProbe, Templates\nprobe = AgentProbe(api_key="ap_live_...", provider="anthropic")\nresults = probe.run(Templates.safety_suite())\nresults.summary()`},
+        {title:"Quick Start",code:`pip install git+https://github.com/ArcticEng/AgentProbe.git\n\nfrom agentprobe import AgentProbe, Templates\nprobe = AgentProbe(api_key="ap_live_...", provider="anthropic")\nresults = probe.run(Templates.safety_suite())\nresults.summary()`},
         {title:"Test a REST API (non-AI)",code:`from agentprobe.adapters import RESTAPIAdapter\nprobe = AgentProbe(adapter=RESTAPIAdapter("https://api.example.com"))\nsuite = TestSuite("API Health")\nsuite.add_test("health", "GET /health").expect_contains("200")\nprobe.run(suite).summary()`},
         {title:"API — Run a template",code:`curl -X POST ${API}/run/template \\\n  -H "X-API-Key: ap_live_..." \\\n  -d '{"template": "safety_suite", "agent": {"type": "anthropic", "api_key": "sk-...", "system_prompt": "You are a support agent."}}'`},
         {title:"API — Test a REST API",code:`curl -X POST ${API}/run/template \\\n  -H "X-API-Key: ap_live_..." \\\n  -d '{"template": "rest_api_health", "agent": {"type": "rest_api", "endpoint": "https://jsonplaceholder.typicode.com"}}'`},
@@ -419,9 +340,8 @@ function DashboardPage({ setView, user, setUser }) {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
       <TemplatePreviewModal template={previewTemplate} onClose={() => setPreviewTemplate(null)} onRun={runTemplate} loading={loading} userPlan={user?.plan} />
-
       <div className="flex items-center justify-between mb-8"><h1 className="text-2xl font-bold text-white/90">Dashboard</h1><div className="flex items-center gap-3">{usage && (<div className="text-xs text-white/30 bg-white/[0.03] px-3 py-1.5 rounded-lg border border-white/[0.06]">{usage.usage?.test_runs||0} / {usage.limits?.limit==="unlimited"?"∞":usage.limits?.limit} runs · <span className="capitalize">{usage.plan}</span> plan</div>)}<button onClick={() => setView("pricing")} className="text-xs text-emerald-400/60 hover:text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20 transition-all">Upgrade</button><button onClick={logout} className="text-xs text-white/30 hover:text-white/60 px-3 py-1.5 transition-all">Log out</button></div></div>
-      {/* Onboarding */}
+
       {showOnboarding && (
         <div className="mb-6 p-5 bg-gradient-to-r from-emerald-500/[0.06] to-cyan-500/[0.06] border border-emerald-500/20 rounded-2xl">
           <div className="flex justify-between items-start">
@@ -438,14 +358,12 @@ function DashboardPage({ setView, user, setUser }) {
         </div>
       )}
 
-      {/* Tab Navigation */}
       <div className="flex gap-1 mb-6 bg-white/[0.02] rounded-xl p-1 border border-white/[0.05]">
-        {[{id:"templates",label:"Templates",icon:"\ud83d\udccb"},{id:"history",label:"History",icon:"\ud83d\udcca"},{id:"custom",label:"Custom Tests",icon:"\ud83d\udd27"}].map(tab => (
+        {[{id:"templates",label:"Templates",icon:"📋"},{id:"history",label:"History",icon:"📊"},{id:"custom",label:"Custom Tests",icon:"🔧"}].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-all ${activeTab === tab.id ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "text-white/30 hover:text-white/50"}`}>{tab.icon} {tab.label}</button>
         ))}
       </div>
 
-      {/* History Tab */}
       {activeTab === "history" && (
         <div className="mb-8">
           <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Test History — Last 30 Days</h2>
@@ -479,13 +397,12 @@ function DashboardPage({ setView, user, setUser }) {
         </div>
       )}
 
-      {/* Custom Tests Tab */}
       {activeTab === "custom" && (
         <div className="mb-8">
           <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Build Custom Tests</h2>
           <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-6">
             <p className="text-xs text-white/40 mb-4">Create test suites specific to your product. Define inputs and expected outputs.</p>
-            <div className="space-y-3" id="custom-test-builder">
+            <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <input id="ct-name" placeholder="Test suite name" className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
                 <input id="ct-input" placeholder="Input message or API call" className="bg-white/[0.03] border border-white/[0.06] rounded-lg px-3 py-2 text-xs text-white/70 placeholder-white/15 focus:border-emerald-500/30 focus:outline-none" />
@@ -510,10 +427,8 @@ function DashboardPage({ setView, user, setUser }) {
         </div>
       )}
 
-      {/* Templates Tab */}
       {activeTab === "templates" && (<>
       {runs.length > 0 && (<div className="grid grid-cols-4 gap-3 mb-8"><MetricCard label="Total runs" value={runs.length}/><MetricCard label="Tests" value={runs.reduce((a,r)=>a+r.total,0)}/><MetricCard label="Avg pass rate" value={`${(runs.reduce((a,r)=>a+r.pass_rate,0)/runs.length*100).toFixed(0)}%`} accent="text-emerald-400"/><MetricCard label="Avg score" value={`${(runs.reduce((a,r)=>a+r.avg_score,0)/runs.length*100).toFixed(0)}%`} accent="text-cyan-400"/></div>)}
-
       {(() => {
         const cats = {};
         templates.forEach(t => { const c = t.category || "General"; if (!cats[c]) cats[c] = []; cats[c].push(t); });
@@ -523,8 +438,7 @@ function DashboardPage({ setView, user, setUser }) {
             <h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-3 flex items-center gap-2"><span>{icons[cat]||"📦"}</span> {cat} <span className="text-[10px] text-white/20 font-mono bg-white/[0.03] px-1.5 py-0.5 rounded">{items.length}</span></h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {items.map(t => (
-                <button key={t.id} onClick={() => setPreviewTemplate(t)}
-                  className="text-left p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-emerald-500/20 rounded-xl transition-all group">
+                <button key={t.id} onClick={() => setPreviewTemplate(t)} className="text-left p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-emerald-500/20 rounded-xl transition-all group">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-white/80 group-hover:text-emerald-300 transition-colors">{t.name}</span>
                     <span className="text-[10px] font-mono text-white/15 bg-white/[0.03] px-1.5 py-0.5 rounded">{t.tests}</span>
@@ -537,28 +451,19 @@ function DashboardPage({ setView, user, setUser }) {
           </div>
         ));
       })()}
-
       {runs.length > 0 && (<div><h2 className="text-sm font-medium text-white/40 uppercase tracking-wider mb-4">Recent runs</h2><div className="space-y-2">{runs.map(run => (<button key={run.id} onClick={() => setCurrentRun(run)} className="w-full flex items-center gap-4 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-lg transition-all text-left"><ScoreRing score={run.avg_score} size={36} stroke={2}/><div className="flex-1"><div className="text-sm font-medium text-white/70">{run.suite_name}</div><div className="text-[10px] text-white/25">{run.passed}/{run.total} passed</div></div><span className="text-[10px] font-mono text-white/15">{run.id}</span></button>))}</div></div>)}
+      </>)}
     </div>
   );
 }
 
-
 function BillingSuccessPage({ setView, user, setUser }) {
   const [status, setStatus] = useState("loading");
   const [upgradedPlan, setUpgradedPlan] = useState(null);
-
   useEffect(() => {
-    // Read plan from URL: /billing/success?plan=pro
     const params = new URLSearchParams(window.location.search);
     const plan = params.get("plan");
-
-    if (!plan || !["pro", "enterprise"].includes(plan)) {
-      setStatus("error");
-      return;
-    }
-
-    // Call backend to upgrade immediately
+    if (!plan || !["pro", "enterprise"].includes(plan)) { setStatus("error"); return; }
     apiFetch(`/billing/confirm-upgrade?plan=${plan}`, { method: "POST" })
       .then(data => {
         setUpgradedPlan(data.plan);
@@ -566,11 +471,9 @@ function BillingSuccessPage({ setView, user, setUser }) {
         localStorage.setItem("ap_user", JSON.stringify(updatedUser));
         setUser(updatedUser);
         setStatus("success");
-        // Clean URL
         window.history.replaceState({}, "", "/billing/success");
       })
-      .catch(e => {
-        // If already upgraded or other issue, check current plan
+      .catch(() => {
         apiFetch("/billing/usage").then(data => {
           if (data.plan === plan || data.plan !== "free") {
             setUpgradedPlan(data.plan);
@@ -578,38 +481,20 @@ function BillingSuccessPage({ setView, user, setUser }) {
             localStorage.setItem("ap_user", JSON.stringify(updatedUser));
             setUser(updatedUser);
             setStatus("success");
-          } else {
-            setStatus("error");
-          }
+          } else { setStatus("error"); }
         }).catch(() => setStatus("error"));
       });
   }, []);
-
   return (
     <div className="max-w-lg mx-auto px-6 py-20">
       <div className="bg-white/[0.03] border border-emerald-500/20 rounded-2xl p-8 text-center">
-        {status === "loading" && (
-          <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl animate-pulse">⏳</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">Activating your plan...</h2>
-          <p className="text-white/40 text-sm">This only takes a moment.</p></>
-        )}
-        {status === "success" && (
-          <><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">You're on {upgradedPlan === "enterprise" ? "Enterprise" : "Pro"}!</h2>
-          <p className="text-white/40 text-sm mb-6">Payment confirmed. You now have access to real system testing, LLM-Judge, and all 33 templates.</p>
-          <button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>
-        )}
-        {status === "error" && (
-          <><div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">!</div>
-          <h2 className="text-xl font-bold text-white/90 mb-2">Something went wrong</h2>
-          <p className="text-white/40 text-sm mb-6">Your payment was received but we couldn't activate your plan automatically. Please contact support.</p>
-          <button onClick={() => setView("dashboard")} className="bg-white/[0.05] hover:bg-white/[0.08] text-white/70 px-8 py-3 rounded-xl text-sm border border-white/[0.08] transition-all w-full">Go to Dashboard</button></>
-        )}
+        {status === "loading" && (<><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl animate-pulse">⏳</div><h2 className="text-xl font-bold text-white/90 mb-2">Activating your plan...</h2><p className="text-white/40 text-sm">This only takes a moment.</p></>)}
+        {status === "success" && (<><div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">✓</div><h2 className="text-xl font-bold text-white/90 mb-2">You're on {upgradedPlan === "enterprise" ? "Enterprise" : "Pro"}!</h2><p className="text-white/40 text-sm mb-6">Payment confirmed. You now have access to real system testing, LLM-Judge, and all 33 templates.</p><button onClick={() => setView("dashboard")} className="bg-emerald-500 hover:bg-emerald-400 text-black font-semibold px-8 py-3 rounded-xl text-sm transition-all w-full">Go to Dashboard</button></>)}
+        {status === "error" && (<><div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">!</div><h2 className="text-xl font-bold text-white/90 mb-2">Something went wrong</h2><p className="text-white/40 text-sm mb-6">Your payment was received but we couldn't activate your plan automatically. Please contact support.</p><button onClick={() => setView("dashboard")} className="bg-white/[0.05] hover:bg-white/[0.08] text-white/70 px-8 py-3 rounded-xl text-sm border border-white/[0.08] transition-all w-full">Go to Dashboard</button></>)}
       </div>
     </div>
   );
 }
-
 
 export default function App() {
   const [view, setView] = useState(() => {
