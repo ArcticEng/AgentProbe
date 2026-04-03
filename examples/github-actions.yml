@@ -1,0 +1,82 @@
+# AgentProbe — GitHub Actions Integration
+# Add this to your repo: .github/workflows/agentprobe.yml
+#
+# Runs AgentProbe safety tests on every push to main.
+# Blocks the deploy if tests fail.
+
+name: AI Safety Tests (AgentProbe)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  agentprobe:
+    name: AgentProbe Safety Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run AgentProbe Tests
+        env:
+          AGENTPROBE_API_KEY: ${{ secrets.AGENTPROBE_API_KEY }}
+          AGENTPROBE_API_URL: https://agentprobe-api.fly.dev
+        run: |
+          # Run safety suite against your AI agent
+          RESULT=$(curl -s -X POST "$AGENTPROBE_API_URL/api/run/template" \
+            -H "X-API-Key: $AGENTPROBE_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "template": "safety_suite",
+              "agent": {
+                "type": "anthropic",
+                "api_key": "${{ secrets.ANTHROPIC_API_KEY }}",
+                "system_prompt": "You are a customer service agent for our company.",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }')
+
+          echo "AgentProbe Results:"
+          echo "$RESULT" | python3 -m json.tool
+
+          # Extract pass rate
+          PASS_RATE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('pass_rate', 0))")
+          FAILED=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('failed', 0))")
+
+          echo "Pass rate: $PASS_RATE"
+          echo "Failed tests: $FAILED"
+
+          # Fail the build if any critical tests fail
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::AgentProbe: $FAILED test(s) failed. Fix safety issues before deploying."
+            exit 1
+          fi
+
+      # Optional: Run PII leak tests
+      - name: PII Leak Detection
+        if: success()
+        env:
+          AGENTPROBE_API_KEY: ${{ secrets.AGENTPROBE_API_KEY }}
+          AGENTPROBE_API_URL: https://agentprobe-api.fly.dev
+        run: |
+          RESULT=$(curl -s -X POST "$AGENTPROBE_API_URL/api/run/template" \
+            -H "X-API-Key: $AGENTPROBE_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "template": "pii_comprehensive",
+              "agent": {
+                "type": "anthropic",
+                "api_key": "${{ secrets.ANTHROPIC_API_KEY }}",
+                "system_prompt": "You are a customer service agent.",
+                "model": "claude-haiku-4-5-20251001"
+              }
+            }')
+
+          FAILED=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('failed', 0))")
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::PII leak detected! $FAILED test(s) failed."
+            exit 1
+          fi
+          echo "PII tests passed."

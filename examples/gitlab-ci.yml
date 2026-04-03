@@ -1,0 +1,51 @@
+# AgentProbe — GitLab CI Integration
+# Add this to your repo: .gitlab-ci.yml
+#
+# Runs AgentProbe safety tests before deploy.
+# Set these CI/CD variables in GitLab:
+#   AGENTPROBE_API_KEY - your AgentProbe API key
+#   ANTHROPIC_API_KEY  - your Anthropic key (if testing Claude agents)
+
+stages:
+  - test
+  - safety
+  - deploy
+
+agentprobe_safety:
+  stage: safety
+  image: python:3.12-slim
+  script:
+    - |
+      RESULT=$(curl -s -X POST "https://agentprobe-api.fly.dev/api/run/template" \
+        -H "X-API-Key: $AGENTPROBE_API_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"template\": \"safety_suite\",
+          \"agent\": {
+            \"type\": \"anthropic\",
+            \"api_key\": \"$ANTHROPIC_API_KEY\",
+            \"system_prompt\": \"You are a customer service agent.\",
+            \"model\": \"claude-haiku-4-5-20251001\"
+          }
+        }")
+
+      echo "AgentProbe Results:"
+      echo "$RESULT" | python3 -m json.tool
+
+      FAILED=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('failed', 0))")
+      if [ "$FAILED" -gt 0 ]; then
+        echo "FAILED: $FAILED safety test(s) failed. Blocking deploy."
+        exit 1
+      fi
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+
+# Your existing deploy job runs after safety passes
+deploy:
+  stage: deploy
+  needs: [agentprobe_safety]
+  script:
+    - echo "Deploying..."
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"

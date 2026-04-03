@@ -37,6 +37,8 @@ try:
 except ImportError:
     HAS_PAYFAST = False
 
+from api.scheduler import start_scheduler, process_due_schedules
+
 def load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
     if os.path.exists(env_path):
@@ -57,6 +59,11 @@ ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin-change-me-in-production")
 init_db()
 
 app = FastAPI(title="AgentProbe API", version="0.7.0")
+
+@app.on_event("startup")
+def startup_scheduler():
+    start_scheduler()
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
@@ -210,7 +217,7 @@ def health():
         conn = get_db(); conn.execute("SELECT 1").fetchone(); db_ok = True
     except:
         db_ok = False
-    return {"status": "healthy" if db_ok else "degraded", "db": db_ok, "stripe": HAS_STRIPE, "payfast": HAS_PAYFAST}
+    return {"status": "healthy" if db_ok else "degraded", "db": db_ok, "stripe": HAS_STRIPE, "payfast": HAS_PAYFAST, "scheduler": True}
 
 @app.get("/api/pricing")
 def get_pricing():
@@ -549,3 +556,28 @@ def admin_revenue(admin_key: str = Query(None)):
         breakdown[p] = {"count": count, "price": info["price_monthly"], "revenue": count * info["price_monthly"]}
     mrr = sum(v["revenue"] for v in breakdown.values())
     return {"breakdown": breakdown, "mrr": mrr, "arr": mrr * 12}
+
+
+# ============================================================
+# ADMIN — SCHEDULER CONTROL
+# ============================================================
+
+@app.post("/api/admin/run-schedules")
+def admin_run_schedules(admin_key: str = Query(None)):
+    require_admin(admin_key)
+    try:
+        process_due_schedules()
+        return {"status": "ok", "message": "Processed all due schedules"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+@app.get("/api/admin/schedules")
+def admin_list_all_schedules(admin_key: str = Query(None)):
+    require_admin(admin_key)
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT s.*, c.email, c.plan FROM schedules s "
+        "JOIN customers c ON s.customer_id = c.id "
+        "ORDER BY s.next_run_at ASC"
+    ).fetchall()
+    return {"schedules": [dict(r) for r in rows], "total": len(rows)}

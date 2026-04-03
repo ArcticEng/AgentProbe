@@ -7,10 +7,13 @@ PayFast flow:
   3. User pays → PayFast sends ITN to our server
   4. We verify signature + upgrade the customer
 
-Sandbox credentials:
-  PAYFAST_MERCHANT_ID=10000100
-  PAYFAST_MERCHANT_KEY=46f0cd694581a
-  PAYFAST_PASSPHRASE=jt7NOE43FZPn  (sandbox passphrase)
+Live credentials set via Fly.io secrets:
+  PAYFAST_MERCHANT_ID, PAYFAST_MERCHANT_KEY, PAYFAST_PASSPHRASE
+  PAYFAST_SANDBOX=false
+
+Pricing (at ~R17.11/USD):
+  Pro:        $49/mo  = R839/mo
+  Enterprise: $499/mo = R8,539/mo
 """
 
 import os
@@ -23,10 +26,10 @@ from datetime import datetime
 from typing import Optional
 
 
-PAYFAST_MERCHANT_ID = os.environ.get("PAYFAST_MERCHANT_ID", "10000100")
-PAYFAST_MERCHANT_KEY = os.environ.get("PAYFAST_MERCHANT_KEY", "46f0cd694581a")
+PAYFAST_MERCHANT_ID = os.environ.get("PAYFAST_MERCHANT_ID", "")
+PAYFAST_MERCHANT_KEY = os.environ.get("PAYFAST_MERCHANT_KEY", "")
 PAYFAST_PASSPHRASE = os.environ.get("PAYFAST_PASSPHRASE", "")
-PAYFAST_SANDBOX = os.environ.get("PAYFAST_SANDBOX", "true").lower() == "true"
+PAYFAST_SANDBOX = os.environ.get("PAYFAST_SANDBOX", "false").lower() == "true"
 
 PAYFAST_URL = "https://sandbox.payfast.co.za/eng/process" if PAYFAST_SANDBOX else "https://www.payfast.co.za/eng/process"
 PAYFAST_VALIDATE_URL = "https://sandbox.payfast.co.za/eng/query/validate" if PAYFAST_SANDBOX else "https://www.payfast.co.za/eng/query/validate"
@@ -44,22 +47,23 @@ FIELD_ORDER = [
     "subscription_type", "billing_date", "recurring_amount", "frequency", "cycles",
 ]
 
+# Pricing: $49 × 17.11 = R839, $499 × 17.11 = R8,539
 PAYFAST_PLANS = {
     "pro": {
-        "amount": "880.00",
+        "amount": "839.00",
         "item_name": "AgentProbe Pro Monthly",
         "item_description": "2000 test runs per month with real system testing and LLM Judge",
         "subscription_type": "1",
-        "recurring_amount": "880.00",
+        "recurring_amount": "839.00",
         "frequency": "3",
         "cycles": "0",
     },
     "enterprise": {
-        "amount": "9000.00",
+        "amount": "8539.00",
         "item_name": "AgentProbe Enterprise Monthly",
         "item_description": "Unlimited runs with certification and priority support",
         "subscription_type": "1",
-        "recurring_amount": "9000.00",
+        "recurring_amount": "8539.00",
         "frequency": "3",
         "cycles": "0",
     },
