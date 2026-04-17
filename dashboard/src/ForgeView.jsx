@@ -545,7 +545,136 @@ function classToTone(cls) {
   return cls === "positive" ? "emerald" : cls === "negative" ? "red" : "amber";
 }
 
-function MatrixView({ matrix }) {
+function AnalysisPanel({ matrixId, diff, setToast }) {
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const hasFindings =
+    (diff?.trigger?.prompts_with_disagreement ?? 0) > 0 ||
+    (diff?.quality?.prompts_with_drift ?? 0) > 0;
+
+  // Try to load cached analysis on mount
+  useEffect(() => {
+    let cancelled = false;
+    forgeFetch(`/skills/regression/${matrixId}/analysis`)
+      .then(a => { if (!cancelled) { setAnalysis(a); setExpanded(true); } })
+      .catch(() => {}); // 404 is normal for un-analyzed matrices
+    return () => { cancelled = true; };
+  }, [matrixId]);
+
+  async function run(force = false) {
+    setLoading(true);
+    try {
+      const a = await forgeFetch(
+        `/skills/regression/${matrixId}/analyze${force ? "?force=true" : ""}`,
+        { method: "POST" }
+      );
+      setAnalysis(a);
+      setExpanded(true);
+    } catch (e) {
+      setToast({ kind: "error", message: e.detail || e.message || "Analysis failed" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const catTones = {
+    description: "cyan",
+    routing:     "violet",
+    guardrail:   "amber",
+    accept:      "emerald",
+  };
+  const catIcons = {
+    description: "✏",
+    routing:     "→",
+    guardrail:   "□",
+    accept:      "✓",
+  };
+  const prioTones = { high: "red", medium: "amber", low: "neutral" };
+
+  if (!analysis) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-white/90 font-medium text-sm mb-1">
+              {hasFindings ? "You have findings. What should you do about them?" : "Everything looks clean. Want a second opinion?"}
+            </div>
+            <div className="text-xs text-white/40 max-w-md">
+              Claude Opus reads the skill, the disagreements, and each model's response, then returns a structured analysis with specific recommendations.
+            </div>
+          </div>
+          <Btn onClick={() => run(false)} disabled={loading}>
+            {loading ? <><Spinner /> Analyzing…</> : "Analyze findings"}
+          </Btn>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="text-white/90 font-semibold">Analysis</div>
+            {analysis.cached && <Badge tone="neutral">cached</Badge>}
+          </div>
+          <div className="text-sm text-white/80 leading-relaxed">{analysis.summary}</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Btn size="sm" variant="ghost" onClick={() => setExpanded(!expanded)}>
+            {expanded ? "Collapse" : "Expand"}
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => run(true)} disabled={loading}>
+            {loading ? <><Spinner /> …</> : "Re-analyze"}
+          </Btn>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="space-y-4">
+          {analysis.likely_cause && (
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-white/40 mb-1.5">Likely cause</div>
+              <div className="text-xs text-white/70 leading-relaxed">{analysis.likely_cause}</div>
+            </div>
+          )}
+
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-wider text-white/40 mb-2">
+              Recommendations ({analysis.recommendations?.length || 0})
+            </div>
+            <div className="space-y-2">
+              {(analysis.recommendations || []).map((r, i) => {
+                const tone = catTones[r.category] || "neutral";
+                return (
+                  <div key={i} className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <Badge tone={tone}>{catIcons[r.category] || "•"} {r.category}</Badge>
+                      <Badge tone={prioTones[r.priority] || "neutral"}>{r.priority} priority</Badge>
+                      <div className="text-sm text-white/90 font-medium">{r.title}</div>
+                    </div>
+                    <div className="text-xs text-white/60 leading-relaxed">{r.detail}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {analysis.token_usage?.input_tokens > 0 && (
+            <div className="text-[11px] text-white/30 font-mono pt-2 border-t border-white/[0.04]">
+              {analysis.token_usage.input_tokens.toLocaleString()}→{analysis.token_usage.output_tokens.toLocaleString()} tokens · Opus 4.7
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function MatrixView({ matrix, setToast }) {
   const [phase, setPhase] = useState(matrix.diff?.trigger ? "trigger" : "quality");
   const [expandedId, setExpandedId] = useState(null);
   const [cellDetail, setCellDetail] = useState(null); // {rowId, model, data}
@@ -696,6 +825,8 @@ function MatrixView({ matrix }) {
       </Card>
 
       {cellDetail && <CellDetailModal detail={cellDetail} onClose={() => setCellDetail(null)} />}
+
+      <AnalysisPanel matrixId={matrix.id} diff={matrix.diff} setToast={setToast} />
     </div>
   );
 }
@@ -926,7 +1057,7 @@ function SkillDetail({ skillId, onBack, setToast }) {
       )}
 
       {tab === "matrix" && matrix && (
-        <MatrixView matrix={matrix} />
+        <MatrixView matrix={matrix} setToast={setToast} />
       )}
     </div>
   );

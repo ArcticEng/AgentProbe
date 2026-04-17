@@ -24,6 +24,7 @@ from forge.evaluator import (
     diff_trigger_runs, diff_quality_runs,
     DEFAULT_MODELS, DEFAULT_JUDGE_MODEL,
 )
+from forge.analyzer import analyze_matrix
 
 # These imports intentionally reach into billing for the same helpers server.py uses.
 from billing import track_usage, PLANS
@@ -477,6 +478,66 @@ def get_regression(matrix_id: str, x_api_key: str = Header(None)):
     if not m or m["customer_id"] != customer["customer_id"]:
         raise HTTPException(404, "Matrix not found")
     return m
+
+
+@router.post("/regression/{matrix_id}/analyze")
+def analyze_regression(matrix_id: str, x_api_key: str = Header(None),
+                      force: bool = Query(False)):
+    """
+    Generate a prescriptive analysis of a regression matrix.
+    Cached per matrix — returns cached result unless ?force=true.
+    If there are no disagreements, returns a canned "ship with confidence"
+    result without calling Claude (free).
+    """
+    customer = _authenticate(x_api_key)
+    m = forge.get_regression_matrix(matrix_id)
+    if not m or m["customer_id"] != customer["customer_id"]:
+        raise HTTPException(404, "Matrix not found")
+
+    if not force:
+        cached = forge.get_regression_analysis(matrix_id)
+        if cached:
+            cached["analysis"]["cached"] = True
+            return cached["analysis"]
+
+    skill = forge.get_skill(m["skill_id"])
+    if not skill:
+        raise HTTPException(404, "Skill not found")
+    version = forge.get_skill_version(m["skill_version_id"])
+    if not version:
+        raise HTTPException(404, "Skill version not found")
+
+    key = _get_anthropic_key()
+    try:
+        analysis = analyze_matrix(
+            skill_name=skill["name"],
+            skill_description=skill["description"],
+            skill_md=version["skill_md"],
+            diff=m["diff"],
+            api_key=key,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Analysis failed: {type(e).__name__}: {e}")
+
+    forge.save_regression_analysis(matrix_id, customer["customer_id"], analysis)
+    # Analysis costs a modest chunk of tokens — count as 1 run for usage tracking
+    if analysis.get("token_usage", {}).get("input_tokens", 0) > 0:
+        track_usage(customer["customer_id"], test_runs=1)
+    return analysis
+
+
+@router.get("/regression/{matrix_id}/analysis")
+def get_analysis(matrix_id: str, x_api_key: str = Header(None)):
+    """Return cached analysis only — does not generate if missing."""
+    customer = _authenticate(x_api_key)
+    m = forge.get_regression_matrix(matrix_id)
+    if not m or m["customer_id"] != customer["customer_id"]:
+        raise HTTPException(404, "Matrix not found")
+    cached = forge.get_regression_analysis(matrix_id)
+    if not cached:
+        raise HTTPException(404, "No analysis yet")
+    cached["analysis"]["cached"] = True
+    return cached["analysis"]
 
 
 @router.get("/{skill_id}/regression")

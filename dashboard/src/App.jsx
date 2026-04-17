@@ -205,6 +205,57 @@ function HomePage({ setView }) {
       <div className="grid grid-cols-3 gap-4 mb-20">
         {[{icon:"🛡",title:"Safety testing",desc:"Jailbreak resistance, prompt injection, PII leak detection, social engineering defense"},{icon:"🧠",title:"LLM-Judge",desc:"AI-powered evaluation catches nuanced issues keyword matching misses — hallucinations, tone, accuracy"},{icon:"✓",title:"Certification",desc:"AgentProbe Certified badge for your website — prove your AI is trustworthy"}].map((f,i)=>(<div key={i} className="p-6 bg-white/[0.02] border border-white/[0.06] rounded-2xl hover:border-emerald-500/20 transition-all"><div className="text-2xl mb-3">{f.icon}</div><h3 className="text-sm font-semibold text-white/80 mb-2">{f.title}</h3><p className="text-xs text-white/30 leading-relaxed">{f.desc}</p></div>))}
       </div>
+
+      {/* Forge — new product callout */}
+      <div className="mb-20 relative overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.06] via-rose-500/[0.04] to-transparent p-10">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-rose-500 rounded-xl flex items-center justify-center text-sm font-bold text-black">F</div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold text-white/90">Forge</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25 font-medium">NEW · BETA</span>
+              </div>
+              <div className="text-xs text-white/40">The production layer for Claude Skills</div>
+            </div>
+          </div>
+
+          <h2 className="text-3xl font-bold text-white/90 max-w-2xl leading-tight mb-3">
+            Your Claude skill works in dev. Does it behave the same way in production?
+          </h2>
+          <p className="text-sm text-white/50 max-w-2xl leading-relaxed mb-8">
+            Anthropic ships a family of Claude models — Opus, Sonnet, Haiku — and your users will hit different ones depending on routing, pricing, and traffic. These models don't always make the same decision on the same prompt. Forge imports your SKILL.md, auto-generates an eval suite, and runs it across every Claude model so you catch cross-model drift before your users do.
+          </p>
+
+          {/* Three-phase roadmap */}
+          <div className="grid grid-cols-3 gap-3 mb-8">
+            {[
+              {phase:"Phase 1", status:"shipping now", tone:"emerald", title:"Diagnostic", desc:"Surface cross-model drift. Heatmap of where Opus, Sonnet, and Haiku disagree on your skill."},
+              {phase:"Phase 2", status:"live", tone:"emerald", title:"Prescriptive", desc:"AI-powered finding analysis. Claude reads the disagreements and tells you exactly how to fix them."},
+              {phase:"Phase 3", status:"on the roadmap", tone:"amber", title:"Preventative", desc:"CI gate. Block PRs that introduce cross-model drift before they merge to main."},
+            ].map((p,i)=>(
+              <div key={i} className="p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-mono text-white/30">{p.phase}</span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded bg-${p.tone}-500/15 text-${p.tone}-400 border border-${p.tone}-500/25 uppercase tracking-wider`}>{p.status}</span>
+                </div>
+                <div className="text-sm font-semibold text-white/90 mb-1">{p.title}</div>
+                <div className="text-xs text-white/45 leading-relaxed">{p.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button onClick={() => setView("signup")} className="bg-amber-500 hover:bg-amber-400 text-black font-semibold px-6 py-2.5 rounded-xl transition-all text-sm">
+              Try Forge free
+            </button>
+            <a href="https://github.com/ArcticEng/AgentProbe/blob/main/FORGE.md" target="_blank" rel="noreferrer" className="text-xs text-white/50 hover:text-white/80 px-4 py-2.5 transition-all">
+              Read the docs →
+            </a>
+          </div>
+        </div>
+      </div>
       <div className="mb-20 p-8 bg-gradient-to-r from-emerald-500/[0.04] to-cyan-500/[0.04] border border-white/[0.06] rounded-2xl">
         <h2 className="text-sm font-semibold text-white/60 mb-4">3 lines to test your agent</h2>
         <pre className="text-sm font-mono text-emerald-300/70 bg-black/30 rounded-xl p-6 overflow-x-auto leading-relaxed">{`pip install git+https://github.com/ArcticEng/AgentProbe.git\n\nfrom agentprobe import AgentProbe, Templates\nprobe = AgentProbe(api_key="ap_live_...", provider="anthropic")\nresults = probe.run(Templates.safety_suite())\nresults.summary()`}</pre>

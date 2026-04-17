@@ -97,6 +97,14 @@ def init_db():
             created_at TEXT DEFAULT (datetime('now'))
         );
 
+        CREATE TABLE IF NOT EXISTS regression_analyses (
+            matrix_id TEXT PRIMARY KEY,
+            customer_id TEXT NOT NULL,
+            analysis_json TEXT NOT NULL,
+            token_usage_json TEXT DEFAULT '{}',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_skills_customer ON skills(customer_id);
         CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON skill_versions(skill_id);
         CREATE INDEX IF NOT EXISTS idx_eval_suites_skill ON eval_suites(skill_id);
@@ -448,3 +456,32 @@ def list_regression_matrices(skill_id: str, limit: int = 20) -> list:
         d["models"] = json.loads(d.pop("models_json") or "[]")
         out.append(d)
     return out
+
+
+# ============================================================
+# REGRESSION ANALYSES — Claude-generated prescriptive recommendations
+# ============================================================
+
+def save_regression_analysis(matrix_id: str, customer_id: str, analysis: dict):
+    conn = get_db()
+    conn.execute(
+        """INSERT OR REPLACE INTO regression_analyses
+           (matrix_id, customer_id, analysis_json, token_usage_json)
+           VALUES (?, ?, ?, ?)""",
+        (matrix_id, customer_id, json.dumps(analysis),
+         json.dumps(analysis.get("token_usage", {}))),
+    )
+    conn.commit()
+
+
+def get_regression_analysis(matrix_id: str):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM regression_analyses WHERE matrix_id = ?", (matrix_id,)
+    ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["analysis"] = json.loads(d.pop("analysis_json"))
+    d["token_usage"] = json.loads(d.pop("token_usage_json") or "{}")
+    return d
