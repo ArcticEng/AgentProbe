@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install fastapi uvicorn httpx stripe python-multipart
+      - run: pip install fastapi uvicorn httpx stripe python-multipart anthropic
       - name: Test API endpoints
         run: |
           python -c "
@@ -66,7 +66,7 @@ jobs:
           # Public endpoints (no auth required)
           r = client.get('/')
           assert r.status_code == 200
-          assert r.json()['name'] == 'AgentProbe'
+          assert 'AgentProbe' in r.json()['name']
           
           r = client.get('/api/health')
           assert r.status_code == 200

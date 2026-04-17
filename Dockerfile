@@ -6,9 +6,10 @@ COPY agentprobe/ agentprobe/
 COPY api/ api/
 COPY billing/ billing/
 COPY certification/ certification/
+COPY forge/ forge/
 COPY .env.example .env.example
 
-RUN pip install --no-cache-dir fastapi uvicorn stripe python-multipart
+RUN pip install --no-cache-dir fastapi uvicorn stripe python-multipart anthropic
 
 EXPOSE 8000
 

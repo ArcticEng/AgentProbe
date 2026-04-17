@@ -8,6 +8,9 @@ build/
 results.json
 production_results.json
 billing/agentprobe.db
+billing/agentprobe.db-shm
+billing/agentprobe.db-wal
+billing/agentprobe.db-journal
 node_modules/
 dashboard/dist/
 dashboard/node_modules/

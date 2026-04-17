@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ForgeView from "./ForgeView";
 
 const API = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
@@ -27,6 +28,7 @@ function Nav({ view, setView, user }) {
         <button onClick={() => setView("docs")} className="text-xs text-white/40 hover:text-white/70 px-3 py-1.5 rounded-lg transition-all">Docs</button>
         {user ? (
           <div className="flex items-center gap-2">
+            <button onClick={() => setView("forge")} className={`text-xs px-3 py-1.5 rounded-lg transition-all ${view === "forge" ? "bg-amber-500/15 text-amber-400 border border-amber-500/25" : "text-white/50 hover:text-amber-400"}`}>Forge <span className="text-[9px] ml-1 opacity-60">beta</span></button>
             <button onClick={() => setView("dashboard")} className="text-xs bg-white/[0.04] text-white/60 hover:text-white/90 px-3 py-1.5 rounded-lg border border-white/[0.08] transition-all">Dashboard</button>
             <div className="w-7 h-7 bg-emerald-500/20 rounded-full flex items-center justify-center text-[10px] text-emerald-400 font-bold">{user.email?.[0]?.toUpperCase() || "U"}</div>
           </div>
@@ -512,6 +514,7 @@ export default function App() {
       {view === "docs" && <DocsPage />}
       {view === "billing_success" && <BillingSuccessPage setView={setView} user={user} setUser={setUser} />}
       {view === "dashboard" && <DashboardPage setView={setView} user={user} setUser={setUser} />}
+      {view === "forge" && <ForgeView />}
       <footer className="border-t border-white/[0.04] py-8 text-center text-xs text-white/20 mt-20">AgentProbe · Universal AI & System Verification · © {new Date().getFullYear()}</footer>
     </div>
   );

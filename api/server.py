@@ -39,6 +39,10 @@ except ImportError:
 
 from api.scheduler import start_scheduler, process_due_schedules
 
+# Forge — the Claude Skills production layer (additive; touches nothing above)
+import forge
+from forge.routes import router as forge_router
+
 def load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
     if os.path.exists(env_path):
@@ -57,14 +61,18 @@ API_DOMAIN = os.environ.get("API_DOMAIN", "https://agentprobe-api.fly.dev")
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "admin-change-me-in-production")
 
 init_db()
+forge.init_db()  # Forge tables (skills, versions, eval_suites, runs, regression_matrices)
 
-app = FastAPI(title="AgentProbe API", version="0.7.0")
+app = FastAPI(title="AgentProbe + Forge API", version="0.8.0")
 
 @app.on_event("startup")
 def startup_scheduler():
     start_scheduler()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Mount Forge routes at /api/skills/*
+app.include_router(forge_router)
 
 
 # ============================================================
@@ -209,7 +217,13 @@ def build_suite(config: SuiteConfig) -> TestSuite:
 
 @app.get("/")
 def root():
-    return {"name": "AgentProbe", "version": "0.7.0", "status": "running", "templates": 33}
+    return {
+        "name": "AgentProbe + Forge",
+        "version": "0.8.0",
+        "status": "running",
+        "templates": 33,
+        "forge": "online",
+    }
 
 @app.get("/api/health")
 def health():
